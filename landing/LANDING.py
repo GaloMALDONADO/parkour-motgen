@@ -12,17 +12,17 @@ from hqp.simulator import Simulator
 from hqp.solvers import NProjections 
 
 from pinocchio.utils import zero as mat_zeros
-import robot_config as conf
-
+import robot_config as rconf
+import mocap_config as mconf
 
 #_ Configuration
 viewerName = 'Landing'
 robotName = "Traceur"
-p = conf.references_path
+p = mconf.trajectories_path
 
 #__ Create the robot  
-robot = Wrapper(conf.generic_model, conf.mesh_path)
-dt = conf.dt
+robot = Wrapper(rconf.generic_model, rconf.mesh_path)
+dt = mconf.time_step
 #q0 = conf.half_sitting
 q0 = np.asmatrix(np.load(p+'/prepare_ref1.npy')).T
 v0 = mat_zeros(robot.nv)

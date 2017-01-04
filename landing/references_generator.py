@@ -1,5 +1,5 @@
 from trajectory_extractor import References
-import Mocap.config as conf
+import mocap_config as mconf
 
 idx = conf.traceurs_list.index('Lucas')
 trial = References(conf.traceurs_list[idx])
@@ -18,7 +18,9 @@ com2 = trial.getCoMfromTrial(r,start=149,end=150)
 ref2 = trial.human.q.copy()
 
 #p = '/local/gmaldona/devel/biomechatronics/src/tests/refs'
-p = '/galo/deve/gepetto/parkour/references'
+#p = '/galo/deve/gepetto/parkour/references'
+p = mconf.trajectories_path
+
 f = p+'/prepare_com1'
 np.save(f,com1)
 f = p+'/prepare_com2'

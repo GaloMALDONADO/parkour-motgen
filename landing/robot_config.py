@@ -4,8 +4,8 @@ import numpy as np
 motion='Precision Landing'
 generic_model =  '/galo/devel/gepetto/Models/data/whole_body/wholebody.osim'
 mesh_path = '/galo/devel/gepetto/Models/data/whole_body/stl_osim/'
-models_path='/galo/devel/gepetto/parkour/landing/models'
-references_path='/galo/devel/gepetto/parkour/landing/references'
+models_path='/galo/devel/gepetto/parkour/models'
+
 #generic_model='/local/gmaldona/devel/Parkour/Models/whole_body/wholebody.osim'
 #models_path='/local/gmaldona/devel/Parkour/Landing/Models'
 #mesh_path='/local/gmaldona/devel/Parkour/Landing/Models/stl_osim/'
@@ -22,6 +22,3 @@ half_sitting = np.matrix([0.,0.,0.92,0.,0.,0.,0.,                               
                           -0.09942936,  0.08942953, -0.00897288, 0.99097712, 0.7, 1.,  0.02, 0.15, 0.]).T # Larm 40-48
 zero_pose = np.asmatrix(np.zeros(np.shape(half_sitting)))
 
-
-#__ SIMULATION
-dt = 1./400
