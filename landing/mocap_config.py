@@ -3,16 +3,11 @@ phases = ['prepare','jump','fly','land']
 digital_frequency = 400.
 analog_frequency = 2000.
 time_step = 1/400.
-#trials_path = '/local/gmaldona/devel/Parkour/Landing/Mocap/'
-trials_path = '/home/xavier/Documents/mocap/galo/parkour/landing'
-trajectories_path =  '/home/xavier/Documents/mocap/galo/parkour/landing/trajectories'
 name = 'Precision Landing'
 
 class MotionNames:
     def __init__(self):
         self.motions = {'trial_names':[], 'jump_names':[], 'fly_names':[], 'land_names':[]}
-        self.source_motions_path = '/local/gmaldona/devel/Parkour/Landing/Motion'
-        self.generated_references_path = '/local/gmaldona/devel/Parkour/Landing/References'
 
     def Cyril(self):
         trial_names = [ 'Motion_pl01.mot', 'Motion_pl02.mot', 'Motion_pl03.mot', 'Motion_pl04.mot',

@@ -6,10 +6,6 @@ generic_model =  '/galo/devel/gepetto/Models/data/whole_body/wholebody.osim'
 mesh_path = '/galo/devel/gepetto/Models/data/whole_body/stl_osim/'
 models_path='/galo/devel/gepetto/parkour/models'
 
-#generic_model='/local/gmaldona/devel/Parkour/Models/whole_body/wholebody.osim'
-#models_path='/local/gmaldona/devel/Parkour/Landing/Models'
-#mesh_path='/local/gmaldona/devel/Parkour/Landing/Models/stl_osim/'
-
 model_names = ['Cyril.osim', 'Lucas.osim','Melvin.osim','Michael.osim','Yoan.osim']
 
 
