@@ -1,5 +1,4 @@
 import os
-#os.sys.path.append('/local/gmaldona/devel/Parkour/HQP')
 import numpy as np
 import matplotlib.pyplot as plt
 import time
@@ -9,8 +8,8 @@ from hqp.wrapper import Wrapper
 from models.osim_parser import readOsim
 
 import pinocchio as se3
-import mocap.config as protocol
-
+import mocap_config as protocol
+import paths as lp
 
 # For use in interactive python mode (ipthyon -i)  
 #interactivePlot = True
@@ -18,9 +17,9 @@ import mocap.config as protocol
 class References:
     def __init__(self, participant):
         self.name = participant
-        self.model_path = protocol.models_path+self.name+'.osim'
-        self.mesh_path = protocol.mesh_path
-        self.trial_path = protocol.trials_path
+        self.model_path = lp.models_path+'/'+self.name+'.osim'
+        self.mesh_path = lp.mesh_path
+        self.trial_path = lp.trials_path
         self.motion = protocol.name
         self.phases = protocol.phases
 
@@ -44,6 +43,7 @@ class References:
         self.land_names = self.motions['land_names'][0]
 
     def loadModel(self):
+        print self.model_path, self.mesh_path
         self.human = Wrapper(self.model_path, self.mesh_path)
         self.human.initDisplay("world/"+self.name, loadModel=False)
         self.human.loadDisplayModel("world/"+self.name, self.name)
@@ -62,10 +62,10 @@ class References:
     def getTrials(self):
         self.trial = []; self.jump = []; self.fly = []; self.land = []
         for trls in xrange(len(self.trial_names)):
-            self.trial.append(readOsim(self.trial_path+'/'+self.name+'/'+self.trial_names[trls]))
-            self.jump.append(readOsim(self.trial_path+'/'+self.name+'/'+self.jump_names[trls]))
-            self.fly.append(readOsim(self.trial_path+'/'+self.name+'/'+self.fly_names[trls]))
-            self.land.append(readOsim(self.trial_path+'/'+self.name+'/'+self.land_names[trls]))
+            self.trial.append(self.human.readOsim(self.trial_path+'/'+self.name+'/'+self.trial_names[trls]))
+            self.jump.append(self.human.readOsim(self.trial_path+'/'+self.name+'/'+self.jump_names[trls]))
+            self.fly.append(self.human.readOsim(self.trial_path+'/'+self.name+'/'+self.fly_names[trls]))
+            self.land.append(self.human.readOsim(self.trial_path+'/'+self.name+'/'+self.land_names[trls]))
 
     def playAllTrials(self, dt=0.0025):
         for trls in xrange(len(self.trial_names)):

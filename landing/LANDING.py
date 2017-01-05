@@ -14,14 +14,15 @@ from hqp.solvers import NProjections
 from pinocchio.utils import zero as mat_zeros
 import robot_config as rconf
 import mocap_config as mconf
+import paths as lp
 
 #_ Configuration
 viewerName = 'Landing'
 robotName = "Traceur"
-p = mconf.trajectories_path
+p = lp.trajectories_path
 
 #__ Create the robot  
-robot = Wrapper(rconf.generic_model, rconf.mesh_path)
+robot = Wrapper(lp.generic_model, lp.mesh_path)
 dt = mconf.time_step
 #q0 = conf.half_sitting
 q0 = np.asmatrix(np.load(p+'/prepare_ref1.npy')).T
@@ -44,44 +45,38 @@ initial_pose = Traj.ConstantNdTrajectory('Post1', p1)
 p2 = np.asmatrix(np.load(p+'/prepare_ref2.npy')).T
 final_pose = Traj.ConstantNdTrajectory('Post2', p2)
 
+
 #trajectory of CoM
-cm1 = np.asmatrix(np.load(p+'/prepare_com1.npy')).T
-initial_cm = Traj.ConstantNdTrajectory('CM1',cm1 )
 cm2 = np.asmatrix(np.load(p+'/prepare_com2.npy')).T
 final_cm = Traj.ConstantNdTrajectory('CM2',cm2 )
 
 #feet static
 idxRF = solver.robot.model.getFrameId('mtp_r')
-rf_des = robot.position(p1,idxRF)
+rf_des = robot.framePosition(idxRF,p2)
+robot.viewer.gui.addXYZaxis('world/target1', [1., 1., 0., .5], 0.03, 0.3)
+robot.placeObject('world/target1', rf_des, True)
 rf_traj = Traj.ConstantSE3Trajectory('RF1',rf_des)
+
 idxLF = solver.robot.model.getFrameId('mtp_l')
-lf_des = robot.position(p2,idxLF)
+lf_des = robot.framePosition(idxLF,p2)
+robot.viewer.gui.addXYZaxis('world/target2', [1., 1., 0., .5], 0.03, 0.3)
+robot.placeObject('world/target2', lf_des, True)
 lf_traj = Traj.ConstantSE3Trajectory('LF1',lf_des)
 
 
 #__ Create Tasks
 RF = Task.SE3Task(solver.robot, idxRF, rf_traj,'Keep Right Foot Task')
-#RF.kp = 10
-#RF.kv = 1
 LF = Task.SE3Task(solver.robot, idxLF, lf_traj, 'Keep Left Foot Task')
-#LF.kp = 10
-#LF.kv = 1
-
-CM1 = Task.CoMTask(solver.robot, initial_cm,'Center of Mass Task 1')
-#CM1.kp = 1
-#CM1.kv = 0.1
 CM2 = Task.CoMTask(solver.robot, final_cm,'Center of Mass Task 2')
-#CM2.kp = 1
-#CM2.kv = 0.1
 
-solver.addTask(CM2, 1)
 solver.addTask([RF, LF], 1)
+solver.addTask(CM2, 1)
 
 robot.display(p1)
-time.sleep(3)
+time.sleep(1)
 
 t=0
-for i in range(1000):
+for i in range(100):
     a = solver.inverseKinematics2nd(0)
     simulator.increment2(robot.q, a, dt, t)
     t += dt

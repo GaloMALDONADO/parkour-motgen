@@ -1,44 +1,51 @@
+import numpy as np 
 from trajectory_extractor import References
 import mocap_config as mconf
+import paths as lp
 
-idx = conf.traceurs_list.index('Lucas')
-trial = References(conf.traceurs_list[idx])
+#_ Configure
+p = lp.trajectories_path
+idx = mconf.traceurs_list.index('Lucas')
+trial = References(mconf.traceurs_list[idx])
+
+#_ Load info
 trial.loadModel()
 trial.display()
 trial.getTrials()
+#choose the trial number
+r=1 
 
+# Get trajectories from the different phases of the movement
 
-r=1
-#_Prepare_______________________________    
+#_Preparation to jump phase ___________________
+# initial posture
 trial.playTrial(r,0.0025,1,0,1)
-ref1 = trial.human.q.copy()
+pose1 = trial.human.q.copy()
 com1 = trial.getCoMfromTrial(r,start=0,end=1)
+# final posture
 trial.playTrial(r,0.0025,1,149,150)
+pose2 = trial.human.q.copy()
 com2 = trial.getCoMfromTrial(r,start=149,end=150)
-ref2 = trial.human.q.copy()
-
-#p = '/local/gmaldona/devel/biomechatronics/src/tests/refs'
-#p = '/galo/deve/gepetto/parkour/references'
-p = mconf.trajectories_path
-
-f = p+'/prepare_com1'
-np.save(f,com1)
-f = p+'/prepare_com2'
-np.save(f,com2)
-f = p+'/prepare_ref1'
-np.save(f,ref1)
-f = p+'/prepare_ref2'
-np.save(f,ref2)
-np.load(f+'.npy')
-
 # traj com  
 tr =trial.trial[1]['pinocchio_data'][0:150]
 CM = trial.human.record(tr,'com')
 CM = np.array(CM[0]).squeeze()
-f = p+'/prepare_comprofile'
-np.save(f,CM)
 
-#_Push_________________________________________   
+# save 
+f = p+'/prepare_ref1'
+np.save(f,pose1)
+f = p+'/prepare_ref2'
+np.save(f,pose2)
+f = p+'/prepare_com1'
+np.save(f,com1)
+f = p+'/prepare_com2'
+np.save(f,com2)
+f = p+'/prepare_comtrajectory'
+np.save(f,CM)
+#np.load(f+'.npy')
+
+
+#_Push phase __________________________________
 # com of mass velocity at the end of the pushing    
 trial.playTrial(r,0.0025,1,385,386)
 com3 = trial.getCoMfromTrial(r,start=385,end=386)
