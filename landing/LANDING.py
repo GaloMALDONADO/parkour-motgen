@@ -10,11 +10,12 @@ from hqp.wrapper import Wrapper
 from hqp.viewer_utils import Viewer
 from hqp.simulator import Simulator
 from hqp.solvers import NProjections 
-
-from pinocchio.utils import zero as mat_zeros
 import robot_config as rconf
 import mocap_config as mconf
 import paths as lp
+import pinocchio as se3
+from pinocchio.utils import zero as mat_zeros
+
 
 #_ Configuration
 viewerName = 'Landing'
@@ -36,51 +37,118 @@ nv = simulator.robot.nv
 #__ Create Solver  
 solver =NProjections('Solv1', q0.copy(), v0.copy(), 0.1, robotName, robot)
 
-#__ Create Trajectories
 
-#Preparation phase
-#initial and final posture
-p1 = np.asmatrix(np.load(p+'/prepare_ref1.npy')).T
-initial_pose = Traj.ConstantNdTrajectory('Post1', p1) 
-p2 = np.asmatrix(np.load(p+'/prepare_ref2.npy')).T
-final_pose = Traj.ConstantNdTrajectory('Post2', p2)
+#__ Create the motions
+class PrepareToJump:
+    DURATION = 150
+    IDXRF = solver.robot.model.getFrameId('mtp_r')
+    IDXLF = solver.robot.model.getFrameId('mtp_l')
+    def __init__(self, visualize=True):
+        self.desPosture1 = np.asmatrix(np.load(p+'/prepare_ref1.npy')).T
+        self.desPosture2 = np.asmatrix(np.load(p+'/prepare_ref2.npy')).T
+        self.desCoM = np.asmatrix(np.load(p+'/prepare_comtrajectory.npy')).T
+        self.desRF = robot.framePosition(self.IDXRF,self.desPosture2)
+        self.desLF = robot.framePosition(self.IDXLF,self.desPosture2)
+        self.trajectories = self.createTrajectories()
+        self.tasks = self.createTasks()
+        self.pushTasks()
+        if visualize is True:
+            self.visualizeTasks()
 
+    def createTrajectories(self):
+        #initial and final posture
+        self.post1Traj = Traj.ConstantNdTrajectory('Post1', self.desPosture1) 
+        self.post2Traj = Traj.ConstantNdTrajectory('Post2', self.desPosture2)
+        #follor the trajectory of the CoM
+        self.cmTraj = Traj.SmoothedNdTrajectory('CMtrj', self.desCoM, dt, 15)
+        #to keep the feet static
+        self.rfTraj = Traj.ConstantSE3Trajectory('RF1',self.desRF)
+        self.lfTraj = Traj.ConstantSE3Trajectory('LF1',self.desLF)
+        return [self.cmTraj, self.rfTraj, self.lfTraj]
+    
+    def createTasks(self):
+        #__ Create Tasks
+        idxRF = solver.robot.model.getFrameId('mtp_r')
+        idxLF = solver.robot.model.getFrameId('mtp_l')
+        self.RF = Task.SE3Task(solver.robot, self.IDXRF, self.rfTraj,'Keep Right Foot Task')
+        self.LF = Task.SE3Task(solver.robot, self.IDXLF, self.lfTraj, 'Keep Left Foot Task')
+        self.CM = Task.CoMTask(solver.robot, self.cmTraj,'Center of Mass Task')
+        return self.CM, self.RF, self.LF
 
-#trajectory of CoM
-cm2 = np.asmatrix(np.load(p+'/prepare_com2.npy')).T
-final_cm = Traj.ConstantNdTrajectory('CM2',cm2 )
+    def visualizeTasks(self):
+        cm = se3.SE3.Identity()
+        cm.translation = self.desCoM[0:3,-1]
+        robot.viewer.gui.addXYZaxis('world/target1', [1., 1., 0., .5], 0.03, 0.3)
+        robot.placeObject('world/target1', cm, True)
+        robot.viewer.gui.addXYZaxis('world/target2', [1., 1., 0., .5], 0.03, 0.3)
+        robot.placeObject('world/target2', self.desRF, True)
+        robot.viewer.gui.addXYZaxis('world/target3', [1., 1., 0., .5], 0.03, 0.3)
+        robot.placeObject('world/target3', self.desLF, True)
+    
+    def pushTasks(self):
+        solver.addTask([self.RF, self.LF], 1)
+        solver.addTask(self.CM, 1)
 
-#feet static
-idxRF = solver.robot.model.getFrameId('mtp_r')
-rf_des = robot.framePosition(idxRF,p2)
-robot.viewer.gui.addXYZaxis('world/target1', [1., 1., 0., .5], 0.03, 0.3)
-robot.placeObject('world/target1', rf_des, True)
-rf_traj = Traj.ConstantSE3Trajectory('RF1',rf_des)
+    def startSimulation(self):
+        robot.display(self.desPosture1)
+        t = 0.0
+        for i in range(0,self.DURATION):
+            a = solver.inverseKinematics2nd(t)
+            simulator.increment2(robot.q, a, dt, t)
+            t += dt
 
-idxLF = solver.robot.model.getFrameId('mtp_l')
-lf_des = robot.framePosition(idxLF,p2)
-robot.viewer.gui.addXYZaxis('world/target2', [1., 1., 0., .5], 0.03, 0.3)
-robot.placeObject('world/target2', lf_des, True)
-lf_traj = Traj.ConstantSE3Trajectory('LF1',lf_des)
+class Jump():
+    DURATION = 235
+    def __init__(self, visualize=True):
+        self.desCoM = np.asmatrix(np.load(p+'/push_comprofile.npy')).T
+        self.desPosture = np.asmatrix(np.load(p+'/push_reff.npy')).T
+        self.desAngMom = np.asmatrix(np.load(p+'/push_hoprofile.npy')).T
+        self.createTrajectories()
+        self.createTasks()
+        self.pushTasks()
+        if visualize is True:
+            self.visualizeTasks()
 
+    def createTrajectories(self):
+        #initial and final posture
+        self.postTraj = Traj.ConstantNdTrajectory('Post1', self.desPosture) 
+        #follor the trajectory of the CoM
+        self.cmTraj = Traj.SmoothedNdTrajectory('CMtrj', self.desCoM, dt, 15)
+        #follow angular momentum
+        
+    
+    def createTasks(self):
+        self.PS = Task.JointPostureTask(solver.robot, self.postTraj, 'Final Posture Task')
+        self.CM = Task.CoMTask(solver.robot, self.cmTraj,'Center of Mass Task')
 
-#__ Create Tasks
-RF = Task.SE3Task(solver.robot, idxRF, rf_traj,'Keep Right Foot Task')
-LF = Task.SE3Task(solver.robot, idxLF, lf_traj, 'Keep Left Foot Task')
-CM2 = Task.CoMTask(solver.robot, final_cm,'Center of Mass Task 2')
+    def visualizeTasks(self):
+        cm = se3.SE3.Identity()
+        cm.translation = self.desCoM[0:3,-1]
+        robot.viewer.gui.addXYZaxis('world/target1', [1., 1., 0., .5], 0.03, 0.3)
+        robot.placeObject('world/target1', cm, True)
+    
+    def pushTasks(self):
+        solver.addTask(self.CM, 1)
+        #solver.addTask(self.PS, 1)
 
-solver.addTask([RF, LF], 1)
-solver.addTask(CM2, 1)
+    def startSimulation(self):
+        t = 0.0
+        for i in range(0,self.DURATION):
+            a = solver.inverseKinematics2nd(t)
+            simulator.increment2(robot.q, a, dt, t)
+            t += dt
 
-robot.display(p1)
-time.sleep(1)
+          
+def startSimulation:
+    prepare = PrepareToJump()
+    prepare.startSimulation()
+    #transition
+    solver.emptyStack()
+    solver.addTask([prepare.RF, prepare.LF], 1)
+    # ---
+    jump   = Jump()
+    jump.startSimulation()
+    # simulate fly
+    #simulator.increment2(robot.q, a, dt, t)
 
-t=0
-for i in range(100):
-    a = solver.inverseKinematics2nd(0)
-    simulator.increment2(robot.q, a, dt, t)
-    t += dt
-
-
-#def prepare():
-#    pass
+startSimulation()
