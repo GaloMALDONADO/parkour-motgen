@@ -143,6 +143,8 @@ class Jump():
 
 G = se3.utils.zero(robot.nv)
 G = np.matrix(np.ones(robot.nv)*9.81).T 
+#M = robot.data.M * G 
+
 def startSimulation():
     prepare = PrepareToJump()
     prepare.startSimulation()
@@ -154,10 +156,11 @@ def startSimulation():
     jump.startSimulation()
     t=0
     # simulate fly
-
-    for i in xrange(30):
+    #b=robot.biais(robot.q, robot.v)
+    #a=se3.aba(robot.model, robot.data, robot.q, robot.v, robot.data.tau)
+    for i in xrange(400):
         fp = robot.framePosition(robot.model.getFrameId('pelvis'))
-        simulator.increment2(robot.q, G, dt, t)
+        simulator.increment2(robot.q, a, dt, t)
         t += 1
 
 startSimulation()
