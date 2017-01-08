@@ -99,12 +99,13 @@ class PrepareToJump:
 
 class Jump():
     DURATION = 235
-    def __init__(self, visualize=True):
+    def __init__(self, prevTasks, visualize=True):
         self.desCoM = np.asmatrix(np.load(p+'/push_comprofile.npy')).T
         self.desPosture = np.asmatrix(np.load(p+'/push_reff.npy')).T
         self.desAngMom = np.asmatrix(np.load(p+'/push_hoprofile.npy')).T
         self.createTrajectories()
         self.createTasks()
+        self.prevTasks=prevTasks
         self.pushTasks()
         if visualize is True:
             self.visualizeTasks()
@@ -129,6 +130,7 @@ class Jump():
     
     def pushTasks(self):
         solver.addTask(self.CM, 1)
+        solver.addTask(self.prevTasks,1)
         #solver.addTask(self.PS, 1)
 
     def startSimulation(self):
@@ -138,17 +140,24 @@ class Jump():
             simulator.increment2(robot.q, a, dt, t)
             t += dt
 
-          
-def startSimulation:
+
+G = se3.utils.zero(robot.nv)
+G = np.matrix(np.ones(robot.nv)*9.81).T 
+def startSimulation():
     prepare = PrepareToJump()
     prepare.startSimulation()
     #transition
     solver.emptyStack()
-    solver.addTask([prepare.RF, prepare.LF], 1)
+    #solver.addTask([prepare.RF, prepare.LF], 1)
     # ---
-    jump   = Jump()
+    jump   = Jump([prepare.RF, prepare.LF])
     jump.startSimulation()
+    t=0
     # simulate fly
-    #simulator.increment2(robot.q, a, dt, t)
+
+    for i in xrange(30):
+        fp = robot.framePosition(robot.model.getFrameId('pelvis'))
+        simulator.increment2(robot.q, G, dt, t)
+        t += 1
 
 startSimulation()
