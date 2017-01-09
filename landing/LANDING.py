@@ -150,7 +150,7 @@ class Fly():
     DURATION = 235
     def __init__(self, visualize=True):
         self.desPosture = np.asmatrix(np.load(p+'/fly_ref.npy')).T
-        #self.desPelvisRot = 
+        self.desPelvisRot = np.asmatrix(np.load(p+'/fly_refprofile.npy'))[:,:7].T
         self.createTrajectories()
         self.createTasks()
         self.pushTasks()
@@ -159,29 +159,28 @@ class Fly():
 
     def createTrajectories(self):
         #initial and final posture
-        self.postTraj = Traj.ConstantNdTrajectory('Post at IC', self.desPosture) 
+        self.postTraj = Traj.ConstantNdTrajectory('Post at IC', self.desPosture)
+        self.rotPelvTraj = Traj.SmoothedNdTrajectory('Pelvis Rot traj', self.desPelvisRot, dt, 15)
     
     def createTasks(self):
         self.PS = Task.JointPostureTask(solver.robot, self.postTraj, 'Final Posture Task')
+        self.PR = Task.FreeFlyerTask(solver.robot, self.rotPelvTraj, 'Rotation Pelvis Task')
+        self.PR.mask(np.array([0,0,0,1,1,1]))
 
     def pushTasks(self):
         solver.addTask(self.PS, 1)
+        solver.addTask(self.PR, 1)
 
     def startSimulation(self):
         t = 0.0
-        g = robot.biais(robot.q,0*robot.v)
-        b = robot.biais(robot.q,robot.v)
-        gm = -np.linalg.inv(robot.data.M)*(g)#+b
+        #g = robot.biais(robot.q,0*robot.v)
+        #b = robot.biais(robot.q,robot.v)
+        #gm = -np.linalg.inv(robot.data.M)*(g)#+b
         for i in range(0,self.DURATION):
             a = solver.inverseKinematics2nd(t)
-            simulator.increment2(robot.q, gm, dt, t)
             simulator.increment2(robot.q, a, dt, t)
+            #simulator.increment2(robot.q, gm, dt, t)
             t += dt
-
-
-G = se3.utils.zero(robot.nv)
-G = np.matrix(np.ones(robot.nv)*9.81).T 
-#M = robot.data.M * G 
 
 def startSimulation():
     prepare = PrepareToJump()
@@ -194,9 +193,7 @@ def startSimulation():
     solver.emptyStack()
     fly = Fly(visualize=False)
     fly.startSimulation()
-    # simulate fly
-    #for i in xrange(400):
-    #    simulator.increment2(robot.q, gm, dt, t)
-    #    t += 1
 
 startSimulation()
+#TODO posture trajectories must be generated differently, not with the actual methods.
+# 
