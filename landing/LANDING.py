@@ -64,7 +64,7 @@ class PrepareToJump:
         #to keep the feet static
         self.rfTraj = Traj.ConstantSE3Trajectory('RF1',self.desRF)
         self.lfTraj = Traj.ConstantSE3Trajectory('LF1',self.desLF)
-        return [self.cmTraj, self.rfTraj, self.lfTraj]
+        return [self.cmTraj, self.rfTraj, self.lfTraj, self.post2Traj]
     
     def createTasks(self):
         #__ Create Tasks
@@ -73,7 +73,8 @@ class PrepareToJump:
         self.RF = Task.SE3Task(solver.robot, self.IDXRF, self.rfTraj,'Keep Right Foot Task')
         self.LF = Task.SE3Task(solver.robot, self.IDXLF, self.lfTraj, 'Keep Left Foot Task')
         self.CM = Task.CoMTask(solver.robot, self.cmTraj,'Center of Mass Task')
-        return self.CM, self.RF, self.LF
+        self.PS = Task.JointPostureTask(solver.robot, self.post2Traj, 'Posture 1')
+        return [self.CM, self.RF, self.LF, self.PS]
 
     def visualizeTasks(self):
         cm = se3.SE3.Identity()
@@ -86,8 +87,9 @@ class PrepareToJump:
         robot.placeObject('world/target3', self.desLF, True)
     
     def pushTasks(self):
-        solver.addTask([self.RF, self.LF], 1)
+        solver.addTask(self.PS, 1)
         solver.addTask(self.CM, 1)
+        solver.addTask([self.RF, self.LF], 1)
 
     def startSimulation(self):
         robot.display(self.desPosture1)
@@ -100,6 +102,7 @@ class PrepareToJump:
 class Jump():
     DURATION = 235
     def __init__(self, prevTasks, visualize=True):
+        #self.actAngMom = se3.ccrba(robot.model, robot.data, robot.q, qdot)[3:6]
         self.desCoM = np.asmatrix(np.load(p+'/push_comprofile.npy')).T
         self.desPosture = np.asmatrix(np.load(p+'/push_reff.npy')).T
         self.desAngMom = np.asmatrix(np.load(p+'/push_hoprofile.npy')).T
@@ -116,11 +119,12 @@ class Jump():
         #follor the trajectory of the CoM
         self.cmTraj = Traj.SmoothedNdTrajectory('CMtrj', self.desCoM, dt, 15)
         #follow angular momentum
-        
+        #self.angMomTraj = Traj.ConstantNdTrajectory('AngMom', self.desAngMom)
     
     def createTasks(self):
         self.PS = Task.JointPostureTask(solver.robot, self.postTraj, 'Final Posture Task')
         self.CM = Task.CoMTask(solver.robot, self.cmTraj,'Center of Mass Task')
+        #self.AM = Task.AngularMomentumTask(solver.robot,'Ang Mom Task')
 
     def visualizeTasks(self):
         cm = se3.SE3.Identity()
@@ -129,6 +133,8 @@ class Jump():
         robot.placeObject('world/target1', cm, True)
     
     def pushTasks(self):
+        #solver.addTask(self.AM,1)
+        solver.addTask(self.PS, 1)
         solver.addTask(self.CM, 1)
         solver.addTask(self.prevTasks,1)
         #solver.addTask(self.PS, 1)
@@ -137,6 +143,38 @@ class Jump():
         t = 0.0
         for i in range(0,self.DURATION):
             a = solver.inverseKinematics2nd(t)
+            simulator.increment2(robot.q, a, dt, t)
+            t += dt
+
+class Fly():
+    DURATION = 235
+    def __init__(self, visualize=True):
+        self.desPosture = np.asmatrix(np.load(p+'/fly_ref.npy')).T
+        #self.desPelvisRot = 
+        self.createTrajectories()
+        self.createTasks()
+        self.pushTasks()
+        if visualize is True:
+            self.visualizeTasks()
+
+    def createTrajectories(self):
+        #initial and final posture
+        self.postTraj = Traj.ConstantNdTrajectory('Post at IC', self.desPosture) 
+    
+    def createTasks(self):
+        self.PS = Task.JointPostureTask(solver.robot, self.postTraj, 'Final Posture Task')
+
+    def pushTasks(self):
+        solver.addTask(self.PS, 1)
+
+    def startSimulation(self):
+        t = 0.0
+        g = robot.biais(robot.q,0*robot.v)
+        b = robot.biais(robot.q,robot.v)
+        gm = -np.linalg.inv(robot.data.M)*(g)#+b
+        for i in range(0,self.DURATION):
+            a = solver.inverseKinematics2nd(t)
+            simulator.increment2(robot.q, gm, dt, t)
             simulator.increment2(robot.q, a, dt, t)
             t += dt
 
@@ -150,17 +188,15 @@ def startSimulation():
     prepare.startSimulation()
     #transition
     solver.emptyStack()
-    #solver.addTask([prepare.RF, prepare.LF], 1)
     # ---
-    jump   = Jump([prepare.RF, prepare.LF])
+    jump = Jump([prepare.RF, prepare.LF])
     jump.startSimulation()
-    t=0
+    solver.emptyStack()
+    fly = Fly(visualize=False)
+    fly.startSimulation()
     # simulate fly
-    #b=robot.biais(robot.q, robot.v)
-    #a=se3.aba(robot.model, robot.data, robot.q, robot.v, robot.data.tau)
-    for i in xrange(400):
-        fp = robot.framePosition(robot.model.getFrameId('pelvis'))
-        simulator.increment2(robot.q, a, dt, t)
-        t += 1
+    #for i in xrange(400):
+    #    simulator.increment2(robot.q, gm, dt, t)
+    #    t += 1
 
 startSimulation()
