@@ -18,3 +18,6 @@ half_sitting = np.matrix([0.,0.,0.92,0.,0.,0.,0.,                               
                           -0.09942936,  0.08942953, -0.00897288, 0.99097712, 0.7, 1.,  0.02, 0.15, 0.]).T # Larm 40-48
 zero_pose = np.asmatrix(np.zeros(np.shape(half_sitting)))
 
+# Viewer
+ENABLE_VIEWER = "ON"
+SHOW_VIEWER_FLOOR = "ON"

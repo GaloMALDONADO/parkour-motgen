@@ -17,25 +17,30 @@ import pinocchio as se3
 from pinocchio.utils import zero as mat_zeros
 
 
+
+Viewer.ENABLE_VIEWER = rconf.ENABLE_VIEWER
+dt = mconf.time_step
+
 #_ Configuration
 viewerName = 'Landing'
-robotName = "Traceur"
+participantName = 'Traceur'
+robotName = "Robot"
 p = lp.trajectories_path
 
 #__ Create the robot  
-robot = Wrapper(lp.generic_model, lp.mesh_path)
-dt = mconf.time_step
+#robot = Wrapper(lp.generic_model, lp.mesh_path)
 #q0 = conf.half_sitting
 q0 = np.asmatrix(np.load(p+'/prepare_ref1.npy')).T
-v0 = mat_zeros(robot.nv)
+v0 = mat_zeros(42)#mat_zeros(robot.nv)
 
 #__ Create simulator: robot + viewer  
-simulator = Simulator('Sim1', q0.copy(), v0.copy(), 0.1, robotName, robot)
+simulator = Simulator('Sim1', q0.copy(), v0.copy(), 0.1, robotName, lp.generic_model, lp.mesh_path)
 nq = simulator.robot.nq
 nv = simulator.robot.nv
-
+simulator.viewer.setVisibility("floor", "ON" if rconf.SHOW_VIEWER_FLOOR else "OFF");
+simulator.viewer.addRobot(participantName,lp.generic_model, lp.mesh_path)
 #__ Create Solver  
-solver =NProjections('Solv1', q0.copy(), v0.copy(), 0.1, robotName, robot)
+solver =NProjections('Solv1', q0.copy(), v0.copy(), 0.1, robotName, simulator.robot)
 
 
 #__ Create the motions
@@ -47,8 +52,8 @@ class PrepareToJump:
         self.desPosture1 = np.asmatrix(np.load(p+'/prepare_ref1.npy')).T
         self.desPosture2 = np.asmatrix(np.load(p+'/prepare_ref2.npy')).T
         self.desCoM = np.asmatrix(np.load(p+'/prepare_comtrajectory.npy')).T
-        self.desRF = robot.framePosition(self.IDXRF,self.desPosture2)
-        self.desLF = robot.framePosition(self.IDXLF,self.desPosture2)
+        self.desRF = simulator.robot.framePosition(self.IDXRF,self.desPosture2)
+        self.desLF = simulator.robot.framePosition(self.IDXLF,self.desPosture2)
         self.trajectories = self.createTrajectories()
         self.tasks = self.createTasks()
         self.pushTasks()
@@ -60,7 +65,7 @@ class PrepareToJump:
         self.post1Traj = Traj.VaryingNdTrajectory('Post1', self.desPosture1, dt) 
         self.post2Traj = Traj.VaryingNdTrajectory('Post2', self.desPosture2, dt)
         #follor the trajectory of the CoM
-        self.cmTraj = Traj.SmoothedNdTrajectory('CMtrj', self.desCoM, dt, 15)
+        self.cmTraj = Traj.SmoothedNdTrajectory('CMtrj', self.desCoM, dt, 55)
         #self.cmTraj = Traj.VaryingNdTrajectory('CMtrj', self.desCoM, dt)
         #to keep the feet static
         self.rfTraj = Traj.ConstantSE3Trajectory('RF1',self.desRF)
@@ -80,12 +85,12 @@ class PrepareToJump:
     def visualizeTasks(self):
         cm = se3.SE3.Identity()
         cm.translation = self.desCoM[0:3,-1]
-        robot.viewer.gui.addXYZaxis('world/target1', [1., 1., 0., .5], 0.03, 0.3)
-        robot.placeObject('world/target1', cm, True)
-        robot.viewer.gui.addXYZaxis('world/target2', [1., 1., 0., .5], 0.03, 0.3)
-        robot.placeObject('world/target2', self.desRF, True)
-        robot.viewer.gui.addXYZaxis('world/target3', [1., 1., 0., .5], 0.03, 0.3)
-        robot.placeObject('world/target3', self.desLF, True)
+        simulator.robot.viewer.gui.addXYZaxis('world/target1', [1., 1., 0., .5], 0.03, 0.3)
+        simulator.robot.placeObject('world/target1', cm, True)
+        simulator.robot.viewer.gui.addXYZaxis('world/target2', [1., 1., 0., .5], 0.03, 0.3)
+        simulator.robot.placeObject('world/target2', self.desRF, True)
+        simulator.robot.viewer.gui.addXYZaxis('world/target3', [1., 1., 0., .5], 0.03, 0.3)
+        simulator.robot.placeObject('world/target3', self.desLF, True)
     
     def pushTasks(self):
         #solver.addTask(self.PS, 1)
@@ -93,12 +98,12 @@ class PrepareToJump:
         solver.addTask([self.RF, self.LF], 1)
 
     def startSimulation(self):
-        robot.display(self.desPosture1)
+        simulator.robot.display(self.desPosture1)
         t = 0.0
         for i in range(0,self.DURATION):
             print 'Time: ', t
             a = solver.inverseKinematics2nd(t)
-            simulator.increment2(robot.q, a, dt, t)
+            simulator.increment2(simulator.robot.q, a, dt, t)
             t += dt
 
 class Jump():
@@ -119,7 +124,7 @@ class Jump():
         #initial and final posture
         self.postTraj = Traj.ConstantNdTrajectory('Post1', self.desPosture) 
         #follor the trajectory of the CoM
-        self.cmTraj = Traj.SmoothedNdTrajectory('CMtrj', self.desCoM, dt, 15)
+        self.cmTraj = Traj.SmoothedNdTrajectory('CMtrj', self.desCoM, dt, 131)
         #follow angular momentum
         #self.angMomTraj = Traj.ConstantNdTrajectory('AngMom', self.desAngMom)
     
@@ -131,8 +136,8 @@ class Jump():
     def visualizeTasks(self):
         cm = se3.SE3.Identity()
         cm.translation = self.desCoM[0:3,-1]
-        robot.viewer.gui.addXYZaxis('world/target1', [1., 1., 0., .5], 0.03, 0.3)
-        robot.placeObject('world/target1', cm, True)
+        simulator.robot.viewer.gui.addXYZaxis('world/target1', [1., 1., 0., .5], 0.03, 0.3)
+        simulator.robot.placeObject('world/target1', cm, True)
     
     def pushTasks(self):
         #solver.addTask(self.AM,1)
@@ -146,11 +151,11 @@ class Jump():
         for i in range(0,self.DURATION):
             print 'Time: ', t
             a = solver.inverseKinematics2nd(t)
-            simulator.increment2(robot.q, a, dt, t)
+            simulator.increment2(simulator.robot.q, a, dt, t)
             t += dt
 
 class Fly():
-    DURATION = 210#278
+    DURATION = 238#278
     COM = []
     def __init__(self, visualize=True):
         self.desPosture = np.asmatrix(np.load(p+'/fly_ref.npy')).T
@@ -158,10 +163,10 @@ class Fly():
         t=0.0
         for i in range(0,self.DURATION):
             if t ==0:
-                acom=robot.data.acom[0]
-                vcom=robot.data.vcom[0]
-                pcom=robot.data.com[0]
-            acom += np.matrix([0.,0.,-9.81/robot.data.mass[0]]).T
+                acom=simulator.robot.data.acom[0]
+                vcom=simulator.robot.data.vcom[0]
+                pcom=simulator.robot.data.com[0]
+            acom += np.matrix([0.,0.,-9.81/simulator.robot.data.mass[0]]).T
             vcom += acom*dt
             pcom += vcom*dt
             self.COM += [np.array(pcom).squeeze()]
@@ -187,6 +192,10 @@ class Fly():
         self.PR.mask(np.array([0,0,0,1,1,1]))
         self.CM = Task.CoMTask(solver.robot, self.cmTraj,'Center of Mass Task')
 
+    def visualizeTasks(self):
+        for i in xrange (0,self.DURATION-1,1):
+            simulator.viewer.addLine('comFly'+str(i),self.COM[i], self.COM[i+1], color=(1.,1.,0,1.0),)
+
     def pushTasks(self):
         solver.addTask(self.PS, 1)
         solver.addTask(self.PR, 1)
@@ -194,7 +203,7 @@ class Fly():
 
     def startSimulation(self):
         t = 0.0
-        a = robot.data.acom[0]
+        #a = simulator.robot.data.acom[0]
         #g = robot.biais(robot.q,0*robot.v)
         #b = robot.biais(robot.q,robot.v)
         #g = -np.linalg.inv(robot.data.M)*(g)#+b
@@ -202,7 +211,7 @@ class Fly():
         for i in range(0,self.DURATION):
             print 'Time: ', t
             a = solver.inverseKinematics2nd(t)
-            simulator.increment2(robot.q, a, dt, t)
+            simulator.increment2(simulator.robot.q, a, dt, t)
             t += dt
             #simulator.increment2(robot.q, gm, dt, t)
             
@@ -219,11 +228,13 @@ jump = Jump([prepare.RF, prepare.LF])
 jump.startSimulation()
 print 'Fly Phase'
 solver.emptyStack()
-fly = Fly(visualize=False)
+fly = Fly(visualize=True)
 fly.startSimulation()
 
+#TODO
+#simulator.viewer.robots['Traceur'].display(q0)
+
 #startSimulation()
-#TODO pelvis orientation not working
 # 
 '''
 import matplotlib.pyplot as plt
