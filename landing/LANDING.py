@@ -20,38 +20,46 @@ from pinocchio.utils import zero as mat_zeros
 
 Viewer.ENABLE_VIEWER = rconf.ENABLE_VIEWER
 dt = mconf.time_step
+#dt = 0.005
+t  = 0.0
 
 #_ Configuration
 viewerName = 'Landing'
 participantName = 'Traceur'
 robotName = "Robot"
+robotNode = 'world/'+robotName+'/'
+
 p = lp.trajectories_path
 
-#__ Create the robot  
-robot = Wrapper(lp.generic_model, lp.mesh_path, robotName)
-traceur = Wrapper(lp.generic_model, lp.mesh_path, participantName)
-#q0 = conf.half_sitting10
-q0 = np.asmatrix(np.load(p+'/prepare_ref1.npy')).T
-v0 = mat_zeros(robot.nv)
+#__ Create the robots  
+#robot = Wrapper(lp.generic_model, lp.mesh_path, robotName, True)
+robot = Wrapper(lp.models_path+'/Lucas.osim', lp.mesh_path, robotName, True)
+robot.q0 = np.asmatrix(np.load(p+'/prepare_ref1.npy')).T
+robot.dt = dt
+traceur = Wrapper(lp.models_path+'/Lucas.osim', lp.mesh_path, participantName, True)
+traceur.q0 = rconf.half_sitting
 
 #__ Create simulator: robot + viewer  
-simulator = Simulator('Sim1', q0.copy(), v0.copy(), 0.1, robotName, robot)
+simulator = Simulator('Sim1', robot)
 simulator.viewer.addRobot(traceur)
 nq = simulator.robot.nq
 nv = simulator.robot.nv
-simulator.viewer.setVisibility("floor", "ON" if rconf.SHOW_VIEWER_FLOOR else "OFF");
+#simulator.viewer.setVisibility("floor", "ON" if rconf.SHOW_VIEWER_FLOOR else "OFF");
 
-#simulator.viewer.robots['Traceur'].display(rconf.half_sitting)
-simulator.viewer.updateRobotConfig(rconf.half_sitting, participantName )
 #__ Create Solver  
-solver =NProjections('Solv1', q0.copy(), v0.copy(), 0.1, robotName, simulator.robot)
+solver =NProjections('Solv1', 
+                     simulator.robot.q0.copy(), 
+                     simulator.robot.v0.copy(), 
+                     dt, simulator.robot.name, 
+                     simulator.robot)
 
-'''
+
 #__ Create the motions
 class PrepareToJump:
     DURATION = 150
     IDXRF = solver.robot.model.getFrameId('mtp_r')
     IDXLF = solver.robot.model.getFrameId('mtp_l')
+
     def __init__(self, visualize=True):
         self.desPosture1 = np.asmatrix(np.load(p+'/prepare_ref1.npy')).T
         self.desPosture2 = np.asmatrix(np.load(p+'/prepare_ref2.npy')).T
@@ -89,12 +97,12 @@ class PrepareToJump:
     def visualizeTasks(self):
         cm = se3.SE3.Identity()
         cm.translation = self.desCoM[0:3,-1]
-        simulator.robot.viewer.gui.addXYZaxis('world/target1', [1., 1., 0., .5], 0.03, 0.3)
-        simulator.robot.placeObject('world/target1', cm, True)
-        simulator.robot.viewer.gui.addXYZaxis('world/target2', [1., 1., 0., .5], 0.03, 0.3)
-        simulator.robot.placeObject('world/target2', self.desRF, True)
-        simulator.robot.viewer.gui.addXYZaxis('world/target3', [1., 1., 0., .5], 0.03, 0.3)
-        simulator.robot.placeObject('world/target3', self.desLF, True)
+        simulator.viewer.viewer.gui.addXYZaxis(robotNode+'target1', [1., 1., 0., .5], 0.03, 0.3)
+        simulator.viewer.placeObject(robotNode+'target1', cm, True)
+        simulator.viewer.viewer.gui.addXYZaxis(robotNode+'target2', [1., 1., 0., .5], 0.03, 0.3)
+        simulator.viewer.placeObject(robotNode+'target2', self.desRF, True)
+        simulator.viewer.viewer.gui.addXYZaxis(robotNode+'target3', [1., 1., 0., .5], 0.03, 0.3)
+        simulator.viewer.placeObject(robotNode+'target3', self.desLF, True)
     
     def pushTasks(self):
         #solver.addTask(self.PS, 1)
@@ -102,10 +110,10 @@ class PrepareToJump:
         solver.addTask([self.RF, self.LF], 1)
 
     def startSimulation(self):
-        simulator.robot.display(self.desPosture1)
+        simulator.viewer.display(self.desPosture1, 'Robot')
         t = 0.0
         for i in range(0,self.DURATION):
-            print 'Time: ', t
+            #print 'Time: ', t
             a = solver.inverseKinematics2nd(t)
             simulator.increment2(simulator.robot.q, a, dt, t)
             t += dt
@@ -140,8 +148,8 @@ class Jump():
     def visualizeTasks(self):
         cm = se3.SE3.Identity()
         cm.translation = self.desCoM[0:3,-1]
-        simulator.robot.viewer.gui.addXYZaxis('world/target1', [1., 1., 0., .5], 0.03, 0.3)
-        simulator.robot.placeObject('world/target1', cm, True)
+        simulator.viewer.viewer.gui.addXYZaxis(robotNode+'target1', [1., 1., 0., .5], 0.03, 0.3)
+        simulator.viewer.placeObject(robotNode+'target1', cm, True)
     
     def pushTasks(self):
         #solver.addTask(self.AM,1)
@@ -151,23 +159,23 @@ class Jump():
         #solver.addTask(self.PS, 1)
 
     def startSimulation(self):
-        t = 0.0
+        t = 0.0        
         for i in range(0,self.DURATION):
-            print 'Time: ', t
+            #print 'Time: ', t
             a = solver.inverseKinematics2nd(t)
             simulator.increment2(simulator.robot.q, a, dt, t)
             t += dt
 
 class Fly():
-    DURATION = 238#278
-    
+    DURATION = 278
     def __init__(self, visualize=True):
         self.desPosture = np.asmatrix(np.load(p+'/fly_ref.npy')).T
         self.desPelvis = np.asmatrix(np.load(p+'/fly_refprofile.npy'))[:,:7].T
         self.CoM = self.calculateCoMParabole(
             simulator.robot.data.com[0],
             simulator.robot.data.vcom[0],
-            simulator.robot.data.acom[0]) 
+            simulator.robot.data.acom[0])
+        print simulator.robot.data.acom[0]
         self.desCoM=np.matrix(self.CoM).T
         self.createTrajectories()
         self.createTasks()
@@ -178,7 +186,8 @@ class Fly():
     def calculateCoMParabole(self,pcom,vcom,acom):
         CoM = []
         for i in range(0,self.DURATION):    
-            acom += np.matrix([0.,0.,-9.81/simulator.robot.data.mass[0]]).T
+            #acom += acom+np.matrix([0.,0.,-9.809]).T#/simulator.robot.data.mass[0]]).T
+            acom += acom+np.matrix([0.,0.,-9.809]).T#/simulator.robot.data.mass[0]]).T#
             vcom += acom*dt
             pcom += vcom*dt
             CoM += [np.array(pcom).squeeze()]
@@ -199,9 +208,10 @@ class Fly():
         self.CM = Task.CoMTask(solver.robot, self.cmTraj,'Center of Mass Task')
 
     def visualizeTasks(self):
+        pass
         #visualize the parabola
-        for i in xrange (0,self.DURATION-1,1):
-            simulator.viewer.addLine('comFly'+str(i),self.CoM[i], self.CoM[i+1], color=(1.,1.,0,1.0),)
+        #for i in xrange (0,self.DURATION-1,1):
+        #    simulator.viewer.addLine(robotNode+'comFly'+str(i),self.CoM[i], self.CoM[i+1], color=(1.,1.,0,1.0),)
 
     def pushTasks(self):
         solver.addTask(self.PS, 1)
@@ -209,14 +219,14 @@ class Fly():
         solver.addTask(self.CM, 1)
 
     def startSimulation(self):
-        t = 0.0
         #a = simulator.robot.data.acom[0]
         #g = robot.biais(robot.q,0*robot.v)
         #b = robot.biais(robot.q,robot.v)
         #g = -np.linalg.inv(robot.data.M)*(g)#+b
-        
+        t = 0.0
+        dt=0.0025
         for i in range(0,self.DURATION):
-            print 'Time: ', t
+            #print 'Time: ', t
             a = solver.inverseKinematics2nd(t)
             simulator.increment2(simulator.robot.q, a, dt, t)
             t += dt
@@ -237,13 +247,12 @@ print 'Fly Phase'
 solver.emptyStack()
 fly = Fly(visualize=True)
 fly.startSimulation()
-
+simulator.viewer.updateRobotConfig(robot.q0.copy(),'Traceur')
 #TODO
 #simulator.viewer.robots['Traceur'].display(q0)
 
 #startSimulation()
 # 
-'''
 
 '''
 import matplotlib.pyplot as plt
