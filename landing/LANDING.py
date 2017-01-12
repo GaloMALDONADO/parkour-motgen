@@ -28,21 +28,25 @@ robotName = "Robot"
 p = lp.trajectories_path
 
 #__ Create the robot  
-#robot = Wrapper(lp.generic_model, lp.mesh_path)
-#q0 = conf.half_sitting
+robot = Wrapper(lp.generic_model, lp.mesh_path, robotName)
+traceur = Wrapper(lp.generic_model, lp.mesh_path, participantName)
+#q0 = conf.half_sitting10
 q0 = np.asmatrix(np.load(p+'/prepare_ref1.npy')).T
-v0 = mat_zeros(42)#mat_zeros(robot.nv)
+v0 = mat_zeros(robot.nv)
 
 #__ Create simulator: robot + viewer  
-simulator = Simulator('Sim1', q0.copy(), v0.copy(), 0.1, robotName, lp.generic_model, lp.mesh_path)
+simulator = Simulator('Sim1', q0.copy(), v0.copy(), 0.1, robotName, robot)
+simulator.viewer.addRobot(traceur)
 nq = simulator.robot.nq
 nv = simulator.robot.nv
 simulator.viewer.setVisibility("floor", "ON" if rconf.SHOW_VIEWER_FLOOR else "OFF");
-simulator.viewer.addRobot(participantName,lp.generic_model, lp.mesh_path)
+
+#simulator.viewer.robots['Traceur'].display(rconf.half_sitting)
+simulator.viewer.updateRobotConfig(rconf.half_sitting, participantName )
 #__ Create Solver  
 solver =NProjections('Solv1', q0.copy(), v0.copy(), 0.1, robotName, simulator.robot)
 
-
+'''
 #__ Create the motions
 class PrepareToJump:
     DURATION = 150
@@ -156,28 +160,30 @@ class Jump():
 
 class Fly():
     DURATION = 238#278
-    COM = []
+    
     def __init__(self, visualize=True):
         self.desPosture = np.asmatrix(np.load(p+'/fly_ref.npy')).T
         self.desPelvis = np.asmatrix(np.load(p+'/fly_refprofile.npy'))[:,:7].T
-        t=0.0
-        for i in range(0,self.DURATION):
-            if t ==0:
-                acom=simulator.robot.data.acom[0]
-                vcom=simulator.robot.data.vcom[0]
-                pcom=simulator.robot.data.com[0]
-            acom += np.matrix([0.,0.,-9.81/simulator.robot.data.mass[0]]).T
-            vcom += acom*dt
-            pcom += vcom*dt
-            self.COM += [np.array(pcom).squeeze()]
-            t += dt
-        self.desCoM=np.matrix(self.COM).T
+        self.CoM = self.calculateCoMParabole(
+            simulator.robot.data.com[0],
+            simulator.robot.data.vcom[0],
+            simulator.robot.data.acom[0]) 
+        self.desCoM=np.matrix(self.CoM).T
         self.createTrajectories()
         self.createTasks()
         self.pushTasks()
         if visualize is True:
             self.visualizeTasks()
 
+    def calculateCoMParabole(self,pcom,vcom,acom):
+        CoM = []
+        for i in range(0,self.DURATION):    
+            acom += np.matrix([0.,0.,-9.81/simulator.robot.data.mass[0]]).T
+            vcom += acom*dt
+            pcom += vcom*dt
+            CoM += [np.array(pcom).squeeze()]
+        return CoM
+    
     def createTrajectories(self):
         #initial and final posture
         self.postTraj = Traj.ConstantNdTrajectory('Post at IC', self.desPosture)
@@ -193,8 +199,9 @@ class Fly():
         self.CM = Task.CoMTask(solver.robot, self.cmTraj,'Center of Mass Task')
 
     def visualizeTasks(self):
+        #visualize the parabola
         for i in xrange (0,self.DURATION-1,1):
-            simulator.viewer.addLine('comFly'+str(i),self.COM[i], self.COM[i+1], color=(1.,1.,0,1.0),)
+            simulator.viewer.addLine('comFly'+str(i),self.CoM[i], self.CoM[i+1], color=(1.,1.,0,1.0),)
 
     def pushTasks(self):
         solver.addTask(self.PS, 1)
@@ -237,6 +244,8 @@ fly.startSimulation()
 #startSimulation()
 # 
 '''
+
+'''
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import cm
 plt.ion()
@@ -247,3 +256,4 @@ ax.plot(fly.COM,'r', linewidth=3.0)
 #ax.plot(com[:,2],'g', linewidth=3.0)
 #ax.plot(com[:,3],'b', linewidth=3.0)
 '''
+
