@@ -5,11 +5,13 @@ import time
 import scipy.io
 
 from hqp.wrapper import Wrapper
+from hqp.viewer_utils import Viewer
 from models.osim_parser import readOsim
 
 import pinocchio as se3
 import mocap_config as protocol
 import paths as lp
+
 
 # For use in interactive python mode (ipthyon -i)  
 #interactivePlot = True
@@ -22,7 +24,6 @@ class References:
         self.trial_path = lp.trials_path
         self.motion = protocol.name
         self.phases = protocol.phases
-
         mn = protocol.MotionNames()
         if participant is 'Cyril':
             self.motions = mn.Cyril()
@@ -44,16 +45,17 @@ class References:
 
     def loadModel(self):
         print self.model_path, self.mesh_path
-        self.human = Wrapper(self.model_path, self.mesh_path)
-        self.human.initDisplay("world/"+self.name, loadModel=False)
-        self.human.loadDisplayModel("world/"+self.name, self.name)
+        self.human = Wrapper(self.model_path, self.mesh_path, self.name, True)
+        self.viewer = Viewer(self.name,self.human)
+        #self.viewer.initDisplay("world/"+self.name)
+        #self.viewer.loadDisplayModel("world/"+self.name, self.name, self.human)
 
     def display(self, pose='zero'):
-        self.human.initDisplay()
+        #self.human.initDisplay()
         if pose is 'hs':
-            self.human.display(self.human.half_sitting())
+            self.viewer.display(self.human.half_sitting(),self.name)
         else:
-            self.human.display(self.human.zero_poseDisplay())
+            self.viewer.display(self.human.zero_poseDisplay(),self.name)
 
     def store(self,store_path):
         #store_path = '/local/gmaldona/devel/biomechatronics/motions/landing/'+self.name+'/' 
@@ -79,7 +81,7 @@ class References:
 
 
     def playTrial(self, rep=0, dt=0.0025, stp=1, start=0, end=None):
-        self.human.playForwardKinematics(self.trial[rep]['pinocchio_data'][start:end], sleep=dt, step=stp)
+        self.playForwardKinematics(self.trial[rep]['pinocchio_data'][start:end], sleep=dt, step=stp)
 
     def playJump(self, rep=0,  dt=0.0025, stp=1, start=0, end=None):
         self.human.playForwardKinematics(self.jump[rep]['pinocchio_data'][start:end], sleep=dt, step=stp)
@@ -100,3 +102,22 @@ class References:
     def refs(self):
         pass
 
+    def playForwardKinematics(self, Q, sleep=0.0025, step=10, record=False):
+        ''' playForwardKinematics(q, sleep, step, record) 
+        '''
+        # TODO at verical line to plot as in opensim during playing    
+        rec = {'q':[],'com':[], 'Jcom':[]}
+        for i in range(0, len(Q),step):
+            self.human.q = Q[i]
+            self.viewer.display(self.human.q, self.name, osimref=True, com=True, updateKinematics=False)
+            time.sleep(sleep)
+            if record is True:    
+                rec['q'].append(self.human.q)
+                rec['com'].append(self.com(self.human.q).getA()[:,0])
+                rec['Jcom'].append(self.Jcom(se3.jacobianCenterOfMass(self.human.model, 
+                                                                      self.human.data, 
+                                                                      self.human.q)))
+        if record is True:
+            return rec
+
+1
