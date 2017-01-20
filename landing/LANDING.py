@@ -150,6 +150,8 @@ class Jump():
         self.desCoM = np.asmatrix(np.load(p+'/push_comprofile.npy')).T
         self.desPosture = np.asmatrix(np.load(p+'/push_reff.npy')).T
         self.desAngMom = np.asmatrix(np.load(p+'/push_hoprofile.npy')).T
+        self.desLinMom = np.asmatrix(np.load(p+'/push_hprofile.npy')).T
+        self.desMom = np.vstack([self.desLinMom,self.desAngMom])
         self.createTrajectories()
         self.createTasks()
         self.prevTasks=prevTasks
@@ -163,12 +165,21 @@ class Jump():
         #follor the trajectory of the CoM
         self.cmTraj = Traj.SmoothedNdTrajectory('CMtrj', self.desCoM, dt, 131)
         #follow angular momentum
-        self.angMomTraj = Traj.ConstantNdTrajectory('AngMom', self.desAngMom)
-    
+        self.angMomTraj = Traj.VaryingNdTrajectory('AngMom', self.desAngMom, dt)
+        self.linMomTraj = Traj.VaryingNdTrajectory('LinMom', self.desLinMom, dt)
+        self.momTraj = Traj.VaryingNdTrajectory('Mom', self.desMom, dt)
+        #self.angMomTraj = Traj.ConstantNdTrajectory('AngMom', self.desAngMom)
+
     def createTasks(self):
         self.PS = Task.JointPostureTask(solver.robot, self.postTraj, 'Final Posture Task')
         self.CM = Task.CoMTask(solver.robot, self.cmTraj,'Center of Mass Task')
-        #self.AM = Task.AngularMomentumTask(solver.robot,'Ang Mom Task')
+        #self.Ho = Task.AngularMomentumTask2(solver.robot,self.angMomTraj, 'Ang Mom Task')
+        self.Ho = Task.MomentumTask(solver.robot,self.angMomTraj, 'Ang Mom Task')
+        self.Ho.mask(np.array([0,0,0,1,1,1]))
+        self.Ho.kp = 200
+        self.Hl = Task.MomentumTask(solver.robot,self.linMomTraj, 'Lin Mom Task')
+        self.Hl.mask(np.array([1,1,1,0,0,0]))
+        self.Hg = Task.MomentumTask(solver.robot,self.momTraj, 'Mom Task')
 
     def visualizeTasks(self):
         cm = se3.SE3.Identity()
@@ -177,10 +188,12 @@ class Jump():
         simulator.viewer.placeObject(robotNode+'target1', cm, True)
     
     def pushTasks(self):
-        #solver.addTask(self.AM,1)
-        solver.addTask(self.PS, 1)
-        solver.addTask(self.CM, 1)
+        #solver.addTask(self.PS, 1)
+#        solver.addTask(self.Ho,1) #check dimension problem
         solver.addTask(self.prevTasks,1)
+        solver.addTask(self.Hg,1)
+        #solver.addTask(self.CM, 1)
+        
 
     def startSimulation(self):
         t = 0.0        
@@ -231,13 +244,21 @@ class Fly():
         self.CM = Task.CoMTask(solver.robot, self.cmTraj,'Center of Mass Task')
 
     def visualizeTasks(self):
-        pass
         #visualize the parabola
-        for i in xrange (0,self.DURATION-1,1):
+        cm = se3.SE3.Identity()
+        for i in xrange (0,self.DURATION-1,2):
             simulator.viewer.addLine(robotNode+'comFly'+str(i),
                                      self.CoM[i], 
                                      self.CoM[i+1], 
                                      color=(1.,1.,0,1.0))
+
+            #simulator.viewer.viewer.gui.addCylinder(robotNode+'comFly2'+str(i),
+            #                                        0.01,
+            #                                        0.01,
+            #                                        (1.,1.,0,1.0)
+            #)
+            #cm.translation = self.CoM[i]
+            #simulator.viewer.placeObject(robotNode+'comFly2'+str(i), cm, True)
 
     def pushTasks(self):
         solver.addTask(self.PS, 1)
