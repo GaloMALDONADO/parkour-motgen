@@ -56,18 +56,27 @@ simulator = Simulator('Sim1', robot)
 simulator.viewer.addRobot(traceur)
 nq = simulator.robot.nq
 nv = simulator.robot.nv
-#simulator.viewer.setVisibility("floor", "ON" if rconf.SHOW_VIEWER_FLOOR else "OFF");
+#simulator.viewer.setVisibility("floor", "ON" if rconf.SHOW_VIEWER_FLOOR else "OFF")
+simulator.viewer.setVisibility("Lucas/floor", "OFF")
+simulator.viewer.setVisibility("Robot/floor", "OFF")
 
 #Add objects
-filename = lp.objects+'/platform1.stl'
+#filename = lp.objects+'/platform1.stl'
+#position = se3.SE3.Identity()
+#position.translation += np.matrix([0.25,-0.35,0.]).T
+#simulator.viewer.viewer.gui.addMesh(robotNode+'platform1', filename)
+#simulator.viewer.placeObject(robotNode+'platform1', position, True)
+#position = se3.SE3.Identity()
+#position.translation += np.matrix([0.25,0.25,0.]).T
+#simulator.viewer.viewer.gui.addMesh(robotNode+'platform2', filename)
+#simulator.viewer.placeObject(robotNode+'platform2', position, True)
+filename = lp.objects+'/parkour_structure_cage.stl'
 position = se3.SE3.Identity()
-position.translation += np.matrix([0.25,-0.35,0.]).T
-simulator.viewer.viewer.gui.addMesh(robotNode+'platform1', filename)
-simulator.viewer.placeObject(robotNode+'platform1', position, True)
-position = se3.SE3.Identity()
-position.translation += np.matrix([0.25,0.25,0.]).T
-simulator.viewer.viewer.gui.addMesh(robotNode+'platform2', filename)
-simulator.viewer.placeObject(robotNode+'platform2', position, True)
+position.translation += np.matrix([-.5,-0.98,1.]).T
+simulator.viewer.viewer.gui.addMesh(robotNode+'cage', filename)
+simulator.viewer.placeObject(robotNode+'cage', position, True)
+
+
 #__ Create Solver  
 solver =NProjections('Solv1', 
                      simulator.robot.q0.copy(), 
@@ -174,10 +183,10 @@ class Jump():
         self.PS = Task.JointPostureTask(solver.robot, self.postTraj, 'Final Posture Task')
         self.CM = Task.CoMTask(solver.robot, self.cmTraj,'Center of Mass Task')
         #self.Ho = Task.AngularMomentumTask2(solver.robot,self.angMomTraj, 'Ang Mom Task')
-        self.Ho = Task.MomentumTask(solver.robot,self.angMomTraj, 'Ang Mom Task')
+        self.Ho = Task.MomentumTask(solver.robot,self.momTraj, 'Ang Mom Task')
         self.Ho.mask(np.array([0,0,0,1,1,1]))
         self.Ho.kp = 200
-        self.Hl = Task.MomentumTask(solver.robot,self.linMomTraj, 'Lin Mom Task')
+        self.Hl = Task.MomentumTask(solver.robot,self.momTraj, 'Lin Mom Task')
         self.Hl.mask(np.array([1,1,1,0,0,0]))
         self.Hg = Task.MomentumTask(solver.robot,self.momTraj, 'Mom Task')
 
@@ -189,9 +198,10 @@ class Jump():
     
     def pushTasks(self):
         #solver.addTask(self.PS, 1)
-#        solver.addTask(self.Ho,1) #check dimension problem
+        solver.addTask(self.Ho,1) #check dimension problem        
+        solver.addTask(self.CM, 1)
         solver.addTask(self.prevTasks,1)
-        solver.addTask(self.Hg,1)
+        #solver.addTask(self.Hg,1)
         #solver.addTask(self.CM, 1)
         
 
@@ -295,7 +305,7 @@ fly = Fly(visualize=True)
 fly.startSimulation()
 #simulator.viewer.updateRobotConfig(robot.q0.copy(),participantName)
 
-#TODO : add angular momentum task
+#TODO : add gain for angular momentum task
 
 
 plt.ion()
