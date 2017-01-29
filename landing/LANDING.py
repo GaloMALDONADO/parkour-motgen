@@ -70,7 +70,7 @@ simulator.viewer.setVisibility("Robot/floor", "OFF")
 #position.translation += np.matrix([0.25,0.25,0.]).T
 #simulator.viewer.viewer.gui.addMesh(robotNode+'platform2', filename)
 #simulator.viewer.placeObject(robotNode+'platform2', position, True)
-filename = lp.objects+'/parkour_structure_cage.stl'
+filename = lp.objects+'/parkour_structure_cage.obj'
 position = se3.SE3.Identity()
 position.translation += np.matrix([-.5,-0.98,1.]).T
 simulator.viewer.viewer.gui.addMesh(robotNode+'cage', filename)
@@ -290,6 +290,45 @@ class Fly():
             t += dt
             #print i
             
+class Land():
+    DURATION = 100 #278
+    IDXRF = solver.robot.model.getFrameId('mtp_r')
+    IDXLF = solver.robot.model.getFrameId('mtp_l')
+    def __init__(self, visualize=True):
+        self.desEnergy = np.matrix([0.,0.,0]).T
+        self.desRF = simulator.robot.framePosition(self.IDXRF,simulator.robot.q)
+        self.desLF = simulator.robot.framePosition(self.IDXLF,simulator.robot.q)
+        self.createTrajectories()
+        self.createTasks()
+        self.pushTasks()
+        #if visualize is True:
+        #    self.visualizeTasks()
+    
+    def createTrajectories(self):
+        self.rfTraj = Traj.ConstantSE3Trajectory('RF1',self.desRF)
+        self.lfTraj = Traj.ConstantSE3Trajectory('LF1',self.desLF)
+        self.keTraj = Traj.ConstantNdTrajectory('KE Trajectory', self.desEnergy)
+        
+    def createTasks(self):
+        self.RF = Task.SE3Task(simulator.robot, self.IDXRF, self.rfTraj,'Keep Right Foot Task')
+        #self.RF.kp = 1; RF.kv = 0.1;
+        self.LF = Task.SE3Task(simulator.robot, self.IDXLF, self.lfTraj, 'Keep Left Foot Task')
+        self.KE = Task.KineticEnergyTask(simulator.robot, self.keTraj, 'Energy Task')
+        self.KE.adaptGain = True
+        #self.KE.kp = 0.01; 
+
+    def pushTasks(self):
+        solver.addTask(self.KE, 1)
+        solver.addTask([self.LF,self.RF], 1)
+
+    def startSimulation(self):
+        t = 0.0
+        dt=0.0025
+        for i in range(0,self.DURATION):
+            a = solver.inverseKinematics2nd(t)
+            simulator.increment2(simulator.robot.q, a, dt, t)
+            trial.playTrial(rep=r,dt=dt,stp=1,start=i+564,end=i+565)
+            t += dt
 
 #def startSimulation():
 print 'Preparation Phase'
@@ -303,17 +342,21 @@ print 'Fly Phase'
 solver.emptyStack()
 fly = Fly(visualize=True)
 fly.startSimulation()
+print 'Land Phase'
+solver.emptyStack()
+land = Land(visualize=True)
+land.startSimulation()
 #simulator.viewer.updateRobotConfig(robot.q0.copy(),participantName)
 
 #TODO : add gain for angular momentum task
 
 
-plt.ion()
-fig = plt.figure('CoM')
+#plt.ion()
+#fig = plt.figure('CoM')
 
-ax = fig.add_subplot ('111')
-ax.plot(fly.desCoM[0].A1,'r', linewidth=3.0)
-ax.plot(fly.desCoM[1].A1,'g', linewidth=3.0)
-ax.plot(fly.desCoM[2].A1,'b', linewidth=3.0)
+#ax = fig.add_subplot ('111')
+#ax.plot(fly.desCoM[0].A1,'r', linewidth=3.0)
+#ax.plot(fly.desCoM[1].A1,'g', linewidth=3.0)
+#ax.plot(fly.desCoM[2].A1,'b', linewidth=3.0)
 
 #plt.close()
