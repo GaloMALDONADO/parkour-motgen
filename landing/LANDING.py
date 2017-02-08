@@ -39,8 +39,6 @@ p = lp.trajectories_path
 robot = Wrapper(lp.models_path+'/Lucas.osim', lp.mesh_path, robotName, True)
 robot.q0 = np.asmatrix(np.load(p+'/prepare_ref1.npy')).T
 robot.dt = dt
-traceur = Wrapper(lp.models_path+'/Lucas.osim', lp.mesh_path, participantName, True)
-traceur.q0 = rconf.half_sitting
 
 idxTraceur = mconf.traceurs_list.index('Lucas')
 trial = References(mconf.traceurs_list[idxTraceur])
@@ -51,14 +49,21 @@ r=1
 for i in xrange(0,len(trial.trial[1]['pinocchio_data'])):
     trial.trial[r]['pinocchio_data'][i,1] = trial.trial[r]['pinocchio_data'][i,1]+1
 
+#traceur = Wrapper(lp.models_path+'/Lucas.osim', lp.mesh_path, participantName, True)
+traceur = trial.human
+traceur.q0 = rconf.half_sitting
+
+
 #__ Create simulator: robot + viewer  
 simulator = Simulator('Sim1', robot)
-simulator.viewer.addRobot(traceur)
+#simulator.viewer.addRobot(traceur)
 nq = simulator.robot.nq
 nv = simulator.robot.nv
 #simulator.viewer.setVisibility("floor", "ON" if rconf.SHOW_VIEWER_FLOOR else "OFF")
 simulator.viewer.setVisibility("Lucas/floor", "OFF")
 simulator.viewer.setVisibility("Robot/floor", "OFF")
+
+
 
 #Add objects
 #filename = lp.objects+'/platform1.stl'
@@ -159,9 +164,11 @@ class Jump():
     def __init__(self, prevTasks, visualize=True):
         #self.actAngMom = se3.ccrba(robot.model, robot.data, robot.q, qdot)[3:6]
         self.desCoM = np.asmatrix(np.load(p+'/push_comprofile.npy')).T
-        self.desPosture = np.asmatrix(np.load(p+'/push_reff.npy')).T
-        self.desAngMom = np.asmatrix(np.load(p+'/push_hoprofile.npy')).T
-        self.desLinMom = np.asmatrix(np.load(p+'/push_hprofile.npy')).T
+        #self.desPosture = np.asmatrix(np.load(p+'/push_reff.npy')).T
+        #self.desAngMom = np.asmatrix(np.load(p+'/push_hoprofile.npy')).T
+        #self.desLinMom = np.asmatrix(np.load(p+'/push_hprofile.npy')).T
+        self.desLinMom = np.matrix([-9.809*12, 0.,9.809]).T #matrix([[-118.13874598],[  -5.47444549], [  10.22683987]])
+        self.desAngMom = np.matrix([0., 3*6.46, 0.]).T
         self.desMom = np.vstack([self.desLinMom,self.desAngMom])
         self.createTrajectories()
         self.createTasks()
@@ -172,36 +179,46 @@ class Jump():
 
     def createTrajectories(self):
         #initial and final posture
-        self.postTraj = Traj.ConstantNdTrajectory('Post1', self.desPosture) 
+        #self.postTraj = Traj.ConstantNdTrajectory('Post1', self.desPosture) 
         #follor the trajectory of the CoM
-        self.cmTraj = Traj.SmoothedNdTrajectory('CMtrj', self.desCoM, dt, 131)
+        #self.cmTraj = Traj.SmoothedNdTrajectory('CMtrj', self.desCoM, dt, 131)
         #follow angular momentum
-        self.angMomTraj = Traj.VaryingNdTrajectory('AngMom', self.desAngMom, dt)
-        self.linMomTraj = Traj.VaryingNdTrajectory('LinMom', self.desLinMom, dt)
-        self.momTraj = Traj.VaryingNdTrajectory('Mom', self.desMom, dt)
+        #self.angMomTraj = Traj.VaryingNdTrajectory('AngMom', self.desAngMom, dt)
+        self.angMomTraj = Traj.ConstantNdTrajectory('AngMom', self.desAngMom)
+        #self.linMomTraj = Traj.VaryingNdTrajectory('LinMom', self.desLinMom, dt)
+        self.linMomTraj = Traj.ConstantNdTrajectory('LinMom', self.desLinMom)
+        #self.momTraj = Traj.VaryingNdTrajectory('Mom', self.desMom, dt)
+        self.momTraj = Traj.ConstantNdTrajectory('Mom', self.desMom)
         #self.angMomTraj = Traj.ConstantNdTrajectory('AngMom', self.desAngMom)
 
     def createTasks(self):
-        self.PS = Task.JointPostureTask(solver.robot, self.postTraj, 'Final Posture Task')
-        self.CM = Task.CoMTask(solver.robot, self.cmTraj,'Center of Mass Task')
+        #self.PS = Task.JointPostureTask(solver.robot, self.postTraj, 'Final Posture Task')
+        #self.CM = Task.CoMTask(solver.robot, self.cmTraj,'Center of Mass Task')
         #self.Ho = Task.AngularMomentumTask2(solver.robot,self.angMomTraj, 'Ang Mom Task')
         self.Ho = Task.MomentumTask(solver.robot,self.momTraj, 'Ang Mom Task')
         self.Ho.mask(np.array([0,0,0,1,1,1]))
-        self.Ho.kp = 200
+        self.Ho.kp = 3
+        self.Ho.kv = 1./2*np.sqrt(self.Ho.kp)
         self.Hl = Task.MomentumTask(solver.robot,self.momTraj, 'Lin Mom Task')
         self.Hl.mask(np.array([1,1,1,0,0,0]))
+        self.Hl.kp = 3
+        self.Hl.kv = 1./2*np.sqrt(self.Hl.kp)
         self.Hg = Task.MomentumTask(solver.robot,self.momTraj, 'Mom Task')
+        self.Hg.kp = 1
+        self.Hg.kv = 0.1
 
     def visualizeTasks(self):
         cm = se3.SE3.Identity()
         cm.translation = self.desCoM[0:3,-1]
-        simulator.viewer.viewer.gui.addXYZaxis(robotNode+'target1', [1., 1., 0., .5], 0.03, 0.3)
-        simulator.viewer.placeObject(robotNode+'target1', cm, True)
+        simulator.viewer.viewer.gui.addXYZaxis(robotNode+'targetJump', [1., 1., 0., .5], 0.03, 0.3)
+        simulator.viewer.placeObject(robotNode+'targetJump', cm, True)
     
     def pushTasks(self):
         #solver.addTask(self.PS, 1)
-        solver.addTask(self.Ho,1) #check dimension problem        
-        solver.addTask(self.CM, 1)
+        #solver.addTask(self.Ho,1) #check dimension problem        
+        #solver.addTask(self.Hg, 1)
+        solver.addTask(self.Ho, 1)
+        solver.addTask(self.Hl, 1)
         solver.addTask(self.prevTasks,1)
         #solver.addTask(self.Hg,1)
         #solver.addTask(self.CM, 1)
@@ -215,6 +232,10 @@ class Jump():
             simulator.increment2(simulator.robot.q, a, dt, t)
             trial.playTrial(rep=r,dt=dt,stp=1,start=i+150,end=i+151)
             t += dt
+            print 'Linear'
+            print self.Hl.err
+            print 'Angular'
+            print self.Ho.err
 
 class Fly():
     DURATION = 187 #278 178
@@ -332,8 +353,8 @@ class Land():
     def visualizeTasks(self):
         cm = se3.SE3.Identity()
         cm.translation = self.desCoM[0:3,-1]
-        simulator.viewer.viewer.gui.addXYZaxis(robotNode+'target1', [1., 1., 0., .5], 0.03, 0.3)
-        simulator.viewer.placeObject(robotNode+'target1', cm, True)
+        simulator.viewer.viewer.gui.addXYZaxis(robotNode+'targetLand1', [1., 1., 0., .5], 0.03, 0.3)
+        simulator.viewer.placeObject(robotNode+'targetLand1', cm, True)
         
 
     def pushTasks(self):
@@ -376,15 +397,15 @@ land = Land(visualize=True)
 land.startSimulation()
 #simulator.viewer.updateRobotConfig(robot.q0.copy(),participantName)
 
-import utils
-from scipy.integrate import odeint
+#import utils
+#from scipy.integrate import odeint
 
-state0 = [np.array(simulator.robot.data.com[0][2])[0][0] , 
-          np.array(simulator.robot.data.vcom[0][2])[0][0] ]
-t = np.arange(0.0, .3, dt)
+#state0 = [np.array(simulator.robot.data.com[0][2])[0][0] , 
+#          np.array(simulator.robot.data.vcom[0][2])[0][0] ]
+#t = np.arange(0.0, .3, dt)
 
-state = odeint(utils.MassSpring, state0)#, t, simulator.robot.data.mass[0], 10.)
-utils.plot(t,state)
+#state = odeint(utils.MassSpring, state0)#, t, simulator.robot.data.mass[0], 10.)
+#utils.plot(t,state)
 
 
 
