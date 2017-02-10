@@ -64,8 +64,8 @@ simulator.viewer.setVisibility("Robot/floor", "OFF")
 filename = lp.objects+'/parkour_structure_cage.stl'
 position = se3.SE3.Identity()
 position.translation += np.matrix([-.5,-0.98,1.]).T
-simulator.viewer.viewer.gui.addMesh(robotNode+'cage', filename)
-simulator.viewer.placeObject(robotNode+'cage', position, True)
+#simulator.viewer.viewer.gui.addMesh(robotNode+'cage', filename)
+#simulator.viewer.placeObject(robotNode+'cage', position, True)
 
 
 #__ Create Solver  
@@ -115,27 +115,38 @@ class PrepareToJump:
         
 
 class Jump():
-    DURATION = 100
+    DURATION = 200
     def __init__(self, visualize=True):
         # Posture
         self.desPosture = np.asmatrix(np.load(p+'/push_reff.npy')).T
         self.trajPosture = Traj.ConstantNdTrajectory('Posture',self.desPosture)
         self.taskPosture = Task.JointPostureTask(solver.robot, self.trajPosture, 'Posture')
         # Linear momentum
-        self.desMom = np.matrix([-g*20, 0.,g*8, 0., 3., 0.]).T 
+        self.desMom = np.matrix([-g*20, 0., g*23, 0., 3., 0.]).T 
         self.trajMom = Traj.ConstantNdTrajectory('Momentum', self.desMom)
         self.taskLinMom = Task.MomentumTask(solver.robot, self.trajMom, 'Linear Momentum AP and V')
         self.taskLinMom.mask(np.array([1,0,1,0,0,0]))
-        self.taskLinMom.kp = 10
-        self.taskLinMom.kv = 10
+        self.taskLinMom.kp = 1
+        self.taskLinMom.kv = 1
+        gainVector = np.ones(simulator.robot.nv)
+        # shoulder flexion
+        gainVector[26]=0; gainVector[34]=0;
+        # elbow flexion
+        gainVector[29]=0; gainVector[37]=0;
+        self.taskLinMom.setGain(gainVector)
         # Angular Momentum
         self.taskAngMom = Task.MomentumTask(solver.robot, self.trajMom, 'Angular Momentum around ML')
         self.taskAngMom.mask(np.array([0,0,0,0,1,0]))
-        self.taskAngMom.kp = 3
-        self.taskAngMom.kv = 3
+        self.taskAngMom.kp = 1
+        self.taskAngMom.kv = 1
+        gainVector = np.zeros(simulator.robot.nv)
+        # shoulder flexion
+        gainVector[26]=1; gainVector[34]=1;
+        # elbow flexion
+        gainVector[29]=1; gainVector[37]=1;
+        self.taskAngMom.setGain(gainVector)
         if visualize is True:
             self.visualizeTasks()
-    #def plotJump(self):
 
     def visualizeTasks(self):
         self.desCoM = np.asmatrix(np.load(p+'/push_comprofile.npy')).T
@@ -218,6 +229,7 @@ class Land():
 
 ''' **********************  MAIN SCRIPT ********************************** '''
 q = []
+hg = []
 prepare = PrepareToJump()
 print 'Preparation Phase'
 solver.addTask(prepare.taskPosture, 1)
@@ -230,6 +242,7 @@ for i in range(0,150):
     #trial.playTrial(rep=r,dt=dt,stp=1,start=i,end=i+1)
     t += dt
     q+=[simulator.robot.q]
+    hg+=[simulator.robot.data.hg.np.squeeze().A1]
 
 print 'Jump Phase'
 solver.emptyStack()
@@ -244,6 +257,15 @@ for i in range(0,100):
     #trial.playTrial(rep=r,dt=dt,stp=1,start=i+prepare.DURATION,end=i+prepare.DURATION+1)
     t += dt
     q+=[simulator.robot.q]
+    hg+=[simulator.robot.data.hg.np.squeeze().A1]
+solver.emptyStack()    
+for i in range(0,150):
+    simulator.increment2(simulator.robot.q, a, dt, t, False)
+    t += dt
+    q+=[simulator.robot.q]
+    hg+=[simulator.robot.data.hg.np.squeeze().A1]
+
+#Last Push in Antero Posterior direction
 
 
 print 'Fly Phase'
@@ -263,6 +285,7 @@ while True:
     #trial.playTrial(rep=r,dt=dt,stp=1,start=i+386,end=i+387)
     t += dt
     q+=[simulator.robot.q]
+    hg+=[simulator.robot.data.hg.np.squeeze().A1]
 
 print 'Land Phase'
 solver.emptyStack()
@@ -276,13 +299,33 @@ for i in range(0,land.DURATION):
     #trial.playTrial(rep=r,dt=dt,stp=1,start=i+573,end=i+574)
     t += dt
     q+=[simulator.robot.q]
+    hg+=[simulator.robot.data.hg.np.squeeze().A1]
     #print simulator.robot.data.acom[0]
     #print simulator.robot.data.kinetic_energy
 
-def playMotions(first=0, last=1):
+def playMotions(first=0, last=1, plot=False):
+    if plot is True:
+        plt.close()
+        plt.ion()
+        plt.figure('Momentum')
+    
     for i in range(first, last):
         trial.playTrial(rep=r,dt=dt,stp=1,start=i,end=i+1)
         simulator.viewer.display(q[i], simulator.robot.name)
+        if plot is True:
+            plt.subplot(231)
+            plt.scatter(i,hg[i][0],color='red')
+            plt.subplot(232)
+            plt.scatter(i,hg[i][1],color='green')
+            plt.subplot(233)
+            plt.scatter(i,hg[i][2],color='blue')
+            plt.subplot(234)
+            plt.scatter(i,hg[i][3],color='red')
+            plt.subplot(235)
+            plt.scatter(i,hg[i][4],color='green')
+            plt.subplot(236)
+            plt.scatter(i,hg[i][5],color='blue')
+            plt.pause(dt)
 
 #print simulator.robot.data.acom[0]
 #print simulator.robot.data.kinetic_energy
