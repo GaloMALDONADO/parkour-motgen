@@ -79,6 +79,9 @@ class References:
             self.human.playForwardKinematics(self.jump[trls]['pinocchio_data'])
             time.sleep(dt)
 
+    def play(self,q):
+        self.human.q = q
+        self.viewer.display(self.human.q, self.name, osimref=True, com=True, updateKinematics=False)
 
     def playTrial(self, rep=0, dt=0.0025, stp=1, start=0, end=None):
         self.playForwardKinematics(self.trial[rep]['pinocchio_data'][start:end], sleep=dt, step=stp)
