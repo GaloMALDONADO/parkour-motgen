@@ -101,6 +101,8 @@ IDXRKNFL = 9 #right knee flexion
 IDXLKNFL = 16 #left knee flexion
 IDXRANFL = 10 #right ankle flexion
 IDXLANFL = 17 #left ankle flexion
+IDXRANIE = 11 #right ankle inversion - eversion
+IDXLANIE = 18 #left ankle inversion - eversion
 IDXBACFL = 20 #back flexion
 IDXNECFL = 23 #neck flexion
 #__ Create the motions
@@ -190,9 +192,9 @@ class Fly():
         # Constant variation of momentum
         self.desMom = np.matrix([0., 0., 0., 0., 0., 0.]).T 
         self.trajMom = Traj.ConstantNdTrajectory('Momentum', self.desMom)
-        self.taskLinMom = Task.MomentumTask(solver.robot, self.trajMom, 'Linear Momentum AP and V')
-        self.taskLinMom.mask(np.array([1,1,1,1,1,1]))
-        self.taskLinMom.kp = 0
+        self.taskMom = Task.FlyMomentumTask(solver.robot, self.trajMom, 'Linear Momentum AP and V')
+        self.taskMom.mask(np.array([1,1,1,1,1,1]))
+        self.taskMom.kv = 201
 
         # Posture
         self.desPosture = np.asmatrix(np.load(p+'/fly_ref.npy')).T
@@ -277,30 +279,31 @@ class Land():
         self.trajMom = Traj.ConstantNdTrajectory('Momentum', self.desMom)
         self.taskLinMom = Task.MomentumTask(solver.robot, self.trajMom, 'Linear Momentum AP and V')
         self.taskLinMom.mask(np.array([1,1,1,0,0,0]))
-        self.taskLinMom.kp = 8
+        self.taskLinMom.kp = 9 #8
         self.taskLinMom.kv = 0
         gainVector = np.ones(simulator.robot.nv)
         # shoulder flexion
         gainVector[IDXRSHFL]=0; gainVector[IDXLSHFL]=0;
         # elbow flexion
         gainVector[IDXRELFL]=0; gainVector[IDXLELFL]=0;
-        # knees rotations
-        gainVector[IDXRKNFL+1]=0; gainVector[IDXLKNFL+1]=0;
-        gainVector[IDXRKNFL+2]=0; gainVector[IDXLKNFL+2]=0;
+        # hip rotations
+        gainVector[IDXRHIFL+1]=0; gainVector[IDXLHIFL+1]=0;
+        gainVector[IDXRHIFL+2]=0; gainVector[IDXLHIFL+2]=0;
+        # ankle inversion - eversion
         # back
         gainVector[IDXBACFL]=0.3;#0.3
         # neck
         gainVector[IDXNECFL]=0;
         # lower joints less controlled to less stop com 
-        gainVector[IDXRHIFL] = 3; gainVector[IDXLHIFL] = 3;
-        gainVector[IDXRKNFL] = 0.1; gainVector[IDXLKNFL] = 0.1;
-        #gainVector[IDXRANFL] = 2; gainVector[IDXLANFL] = 2;
+        gainVector[IDXRHIFL] = 3; gainVector[IDXLHIFL] = 3;#3
+        gainVector[IDXRKNFL] = 0.1; gainVector[IDXLKNFL] = 0.1; #0.1
+        #gainVector[IDXRANFL] = 1; gainVector[IDXLANFL] = 1;#3
         self.taskLinMom.setGain(gainVector)
 
         # Angular Momentum
         self.taskAngMom = Task.MomentumTask(solver.robot, self.trajMom, 'Angular Momentum around ML')
         self.taskAngMom.mask(np.array([0,0,0,1,1,1]))
-        self.taskAngMom.kp = 18
+        self.taskAngMom.kp = 20#18
         self.taskAngMom.kv = 0
         gainVector = np.zeros(simulator.robot.nv)
         # shoulder flexion
@@ -436,12 +439,14 @@ fly = Fly()
 solver.addTask(fly.taskPelvis, 1)
 solver.addTask(fly.taskPosture, 1)
 solver.addTask(fly.taskCoM, 1)
+#solver.addTask(fly.taskMom, 1)
 t = 0.0
 i = 0
 while True:
-#for i in range(0, fly.DURATION):
+#for i in range(0, 100):
     i +=1 
     a = solver.inverseKinematics2nd(t)
+    #a[0:6]+=simulator.robot.model.gravity.vector.copy()
     simulator.increment2(simulator.robot.q, a, dt, t, False)
     # check contact with the ground
     if simulator.robot.framePosition(IDXRF,simulator.robot.q).translation[2] <= 0.2 : #0.2
@@ -457,11 +462,12 @@ print 'Land Phase'
 solver.emptyStack()
 land = Land()
 solver.addTask(land.taskHD, 1)
-solver.addTask([land.taskRA, land.taskLA], 1)
+#solver.addTask([land.taskRA, land.taskLA], 1)
 solver.addTask(land.taskAngMom, 1)
 solver.addTask(land.taskLinMom, 1)
 solver.addTask([land.taskRF, land.taskLF], 1)
 t = 0.0
+
 for i in range(0,land.DURATION):
     a = solver.inverseKinematics2nd(t)
     simulator.increment2(simulator.robot.q, a, dt, t, False)
