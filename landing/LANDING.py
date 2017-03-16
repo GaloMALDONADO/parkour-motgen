@@ -1,4 +1,5 @@
 import os
+import subprocess
 import time
 import sys
 import numpy as np
@@ -17,8 +18,17 @@ import robot_config as rconf
 import mocap_config as mconf
 import paths as lp
 from trajectory_extractor import References
+import gains
+import indexes as idx
 import pinocchio as se3
 from pinocchio.utils import zero as mat_zeros
+
+# call the gepetto viewer server
+gvs = subprocess.Popen(["./gepetto-viewer.sh","&"])
+#gvs.kill()
+print 'Loading the viewer ...'
+time.sleep(2)
+
 
 p = lp.trajectories_path
 Viewer.ENABLE_VIEWER = rconf.ENABLE_VIEWER
@@ -71,11 +81,11 @@ simulator.viewer.setVisibility("Robot/floor", "OFF")
 
 
 #Add objects
-filename = lp.objects+'/parkour_structure_cage.stl'
+filename = lp.objects+'/parkour_structure_cage.obj'
 position = se3.SE3.Identity()
 position.translation += np.matrix([-.5,-0.98,1.]).T
-#simulator.viewer.viewer.gui.addMesh(robotNode+'cage', filename)
-#simulator.viewer.placeObject(robotNode+'cage', position, True)
+simulator.viewer.viewer.gui.addMesh(robotNode+'cage', filename)
+simulator.viewer.placeObject(robotNode+'cage', position, True)
 
 
 #__ Create Solver  
@@ -85,26 +95,7 @@ solver =NProjections('Solv1',
                      dt, simulator.robot.name, 
                      simulator.robot)
 
-#__ Operational Points
-IDXRF = solver.robot.model.getFrameId('mtp_r')
-IDXLF = solver.robot.model.getFrameId('mtp_l')
-IDXRA = solver.robot.model.getFrameId('ankle_r')
-IDXLA = solver.robot.model.getFrameId('ankle_l')
-IDXHD = solver.robot.model.getFrameId('neck')
-IDXRSHFL = 26 #right shoulder flexion
-IDXLSHFL = 34 #left shoulder flexion
-IDXRELFL = 29 #right elbow flexion
-IDXLELFL = 37 #left elbow flexion
-IDXRHIFL = 6  #right hip flexion
-IDXLHIFL = 13 #left hip flxion
-IDXRKNFL = 9 #right knee flexion
-IDXLKNFL = 16 #left knee flexion
-IDXRANFL = 10 #right ankle flexion
-IDXLANFL = 17 #left ankle flexion
-IDXRANIE = 11 #right ankle inversion - eversion
-IDXLANIE = 18 #left ankle inversion - eversion
-IDXBACFL = 20 #back flexion
-IDXNECFL = 23 #neck flexion
+
 #__ Create the motions
 class PrepareToJump:
     DURATION = 150    
@@ -118,12 +109,12 @@ class PrepareToJump:
         self.trajCoM = Traj.SmoothedNdTrajectory('CMtrj', self.desCoM, dt, 55)
         self.taskCoM = Task.CoMTask(solver.robot, self.trajCoM,'Center of Mass Task')
         # Foot Position
-        self.desRF = simulator.robot.framePosition(IDXRF,self.desPosture)
-        self.desLF = simulator.robot.framePosition(IDXLF,self.desPosture)
+        self.desRF = simulator.robot.framePosition(idx.FRF,self.desPosture)
+        self.desLF = simulator.robot.framePosition(idx.FLF,self.desPosture)
         self.trajRF = Traj.ConstantSE3Trajectory('RF1',self.desRF)
         self.trajLF = Traj.ConstantSE3Trajectory('LF1',self.desLF)
-        self.taskRF = Task.SE3Task(solver.robot, IDXRF, self.trajRF,'Keep Right Foot Task')
-        self.taskLF = Task.SE3Task(solver.robot, IDXLF, self.trajLF, 'Keep Left Foot Task')
+        self.taskRF = Task.SE3Task(solver.robot, idx.FRF, self.trajRF,'Keep Right Foot Task')
+        self.taskLF = Task.SE3Task(solver.robot, idx.FLF, self.trajLF, 'Keep Left Foot Task')
         self.taskRF.mask(np.array([1,1,1,0,0,0]))
         self.taskLF.mask(np.array([1,1,1,0,0,0]))
         if visualize is True:
@@ -140,9 +131,22 @@ class PrepareToJump:
         simulator.viewer.placeObject(robotNode+'target3', self.desLF, True)
         
 
-class Jump():
-    DURATION = 200
+class Jump:
+    DURATION = 200 #200
     def __init__(self, visualize=True):
+        w = gains.JumpGains()
+        # Vision
+        self.desGaze = np.matrix([0.,0.]).T
+        self.trajGaze = Traj.ConstantNdTrajectory('Gaze',self.desGaze)
+        self.target = se3.SE3.Identity()#np.matrix([0.,0.,0.]).T #3d point
+        self.target.translation = np.matrix([0.,0.,0.]).T
+        self.op = np.matrix([0.0,0.1,0.12]).T #operational point wrt to neck
+        self.taskGaze = Task.GazeSE3Task(solver.robot, idx.FHD, self.op, self.target, self.trajGaze)
+        self.taskGaze.kp = w.kp_gaze #10
+        #simulator.viewer.viewer.gui.addXYZaxis(robotNode+'targetGaze', [1., 1., 0., .5], 0.03, 0.3)
+        #simulator.viewer.viewer.gui.addXYZaxis(robotNode+'Vision', 0.05,0.2, [1., 1., 0., .5])
+        simulator.viewer.viewer.gui.addXYZaxis(robotNode+'oMi', [1., 0.5, 0.5, .5], 0.03, 0.3)
+        simulator.viewer.viewer.gui.addXYZaxis(robotNode+'iMo', [1., 0., 1., .5], 0.03, 0.3)
         # Posture
         self.desPosture = np.asmatrix(np.load(p+'/push_reff.npy')).T
         self.trajPosture = Traj.ConstantNdTrajectory('Posture',self.desPosture)
@@ -157,25 +161,15 @@ class Jump():
         self.trajMom = Traj.ConstantNdTrajectory('Momentum', self.desMom)
         self.taskLinMom = Task.MomentumTask(solver.robot, self.trajMom, 'Linear Momentum AP and V')
         self.taskLinMom.mask(np.array([1,1,1,0,0,0]))
-        self.taskLinMom.kp = 5
-        self.taskLinMom.kv = 1
-        gainVector = np.ones(simulator.robot.nv)
-        # shoulder flexion
-        gainVector[26]=0; gainVector[34]=0;
-        # elbow flexion
-        gainVector[29]=0; gainVector[37]=0;
-        self.taskLinMom.setGain(gainVector)
+        self.taskLinMom.kp = w.kp_lin_mom #5
+        self.taskLinMom.kv = w.kv_ang_mom
+        self.taskLinMom.setGain(w.gain_vector_lin_mom)
         # Angular Momentum
         self.taskAngMom = Task.MomentumTask(solver.robot, self.trajMom, 'Angular Momentum around ML')
         self.taskAngMom.mask(np.array([0,0,0,0,1,0]))
-        self.taskAngMom.kp = 0.05
-        self.taskAngMom.kv = 1
-        gainVector = np.zeros(simulator.robot.nv)
-        # shoulder flexion
-        gainVector[26]=1; gainVector[34]=1;
-        # elbow flexion
-        gainVector[29]=1; gainVector[37]=1;
-        self.taskAngMom.setGain(gainVector)
+        self.taskAngMom.kp = w.kp_ang_mom #0.03
+        self.taskAngMom.kv = w.kv_ang_mom
+        self.taskAngMom.setGain(w.gain_vector_ang_mom)
         if visualize is True:
             self.visualizeTasks()
         
@@ -189,18 +183,19 @@ class Jump():
 class Fly():
     DURATION = 0 #278 178 187
     def __init__(self, visualize=True):
+        w = gains.FlyGains()
         # Constant variation of momentum
         self.desMom = np.matrix([0., 0., 0., 0., 0., 0.]).T 
         self.trajMom = Traj.ConstantNdTrajectory('Momentum', self.desMom)
         self.taskMom = Task.FlyMomentumTask(solver.robot, self.trajMom, 'Linear Momentum AP and V')
         self.taskMom.mask(np.array([1,1,1,1,1,1]))
-        self.taskMom.kv = 201
+        self.taskMom.kv = 20
 
         # Posture
         self.desPosture = np.asmatrix(np.load(p+'/fly_ref.npy')).T
         self.trajPosture = Traj.ConstantNdTrajectory('Post at IC', self.desPosture)
         self.taskPosture = Task.JointPostureTask(solver.robot, self.trajPosture, 'Final Posture Task')
-        self.taskPosture.kp = 100
+        self.taskPosture.kp = w.kp_posture#100
         # Pelvis orientation
         #self.desPelvis = np.asmatrix(np.load(p+'/fly_refprofile.npy'))[:,:7].T
         #self.trajPelvis = Traj.SmoothedNdTrajectory('Pelvis Rot traj', self.desPelvis, dt, 15) 
@@ -208,7 +203,7 @@ class Fly():
         self.trajPelvis = Traj.ConstantNdTrajectory('Pelvis Rot traj', self.desPelvis)
         self.taskPelvis = Task.FreeFlyerTask(solver.robot, self.trajPelvis, 'Rotation Pelvis Task')
         self.taskPelvis.mask(np.array([0,0,0,1,1,1]))
-        self.taskPelvis.kp = 100
+        self.taskPelvis.kp = w.kp_pelvis
         # Center of Mass
         self.CoM = self.calculateCoMParabole(
             simulator.robot.data.com[0],
@@ -240,81 +235,66 @@ class Fly():
                                      color=(1.,1.,0,1.0))
 
             
-class Land():
+class Land:
     DURATION = 122
     def __init__(self, visualize=True):
+        w = gains.LandGains()
         # Head
         self.desHD = simulator.robot.framePosition(IDXHD,simulator.robot.q)
         self.trajHD = Traj.ConstantSE3Trajectory('HD',self.desHD)
-        self.taskHD = Task.SE3Task(solver.robot, IDXHD, self.trajHD,'Keep Right Foot Task')
+        self.taskHD = Task.SE3Task(solver.robot, idx.FHD, self.trajHD,'Keep Right Foot Task')
         self.taskHD.mask(np.array([0,0,0,1,1,1]))
+        self.taskHD.kp = w.kp_head
+        self.taskHD.kv = w.kv_head
         # Feet
         self.desRF = simulator.robot.framePosition(IDXRF,simulator.robot.q)
         self.trajRF = Traj.ConstantSE3Trajectory('RF1',self.desRF)
-        self.taskRF = Task.SE3Task(solver.robot, IDXRF, self.trajRF,'Keep Right Foot Task')
+        self.taskRF = Task.SE3Task(solver.robot, idx.FRF, self.trajRF,'Keep Right Foot Task')
         self.taskRF.mask(np.array([1,1,1,1,1,1]))
-        self.taskRF.kp = 15
+        self.taskRF.kp = w.kp_right_foot
+        self.taskRF.kv = w.kv_right_foot
         
         self.desLF = simulator.robot.framePosition(IDXLF,simulator.robot.q)
         self.trajLF = Traj.ConstantSE3Trajectory('LF1',self.desLF)
-        self.taskLF = Task.SE3Task(solver.robot, IDXLF, self.trajLF, 'Keep Left Foot Task')
+        self.taskLF = Task.SE3Task(solver.robot, idx.FLF, self.trajLF, 'Keep Left Foot Task')
         self.taskLF.mask(np.array([1,1,1,1,1,1]))
-        self.taskLF.kp = 15
+        self.taskLF.kp = w.kp_left_foot
+        self.taskLF.kv = w.kv_left_foot
         
         # Ankle
         self.desRA = simulator.robot.framePosition(IDXRA,simulator.robot.q)
         self.trajRA = Traj.ConstantSE3Trajectory('RF1',self.desRA)
-        self.taskRA = Task.SE3Task(solver.robot, IDXRA, self.trajRA,'Keep Right Foot Task')
+        self.taskRA = Task.SE3Task(solver.robot, idx.FRA, self.trajRA,'Keep Right Foot Task')
         self.taskRA.mask(np.array([1,1,1,1,1,1]))
-        self.taskRA.kp = 15
+        self.taskRA.kp = w.kp_right_ankle
+        self.taskRA.kv = w.kv_right_ankle
         
         self.desLA = simulator.robot.framePosition(IDXLA,simulator.robot.q)
         self.trajLA = Traj.ConstantSE3Trajectory('LF1',self.desLA)
-        self.taskLA = Task.SE3Task(solver.robot, IDXLA, self.trajLA, 'Keep Left Foot Task')
+        self.taskLA = Task.SE3Task(solver.robot, idx.FLA, self.trajLA, 'Keep Left Foot Task')
         self.taskLA.mask(np.array([1,1,1,1,1,1]))
-        self.taskLA.kp = 15
+        self.taskLA.kp = w.kp_left_ankle
+        self.taskLA.kv = w.kv_left_ankle
         
         # Linear momentum
         self.desMom = np.matrix([0., 0., 0., 0., 0., 0.]).T 
         self.trajMom = Traj.ConstantNdTrajectory('Momentum', self.desMom)
         self.taskLinMom = Task.MomentumTask(solver.robot, self.trajMom, 'Linear Momentum AP and V')
         self.taskLinMom.mask(np.array([1,1,1,0,0,0]))
-        self.taskLinMom.kp = 9 #8
-        self.taskLinMom.kv = 0
-        gainVector = np.ones(simulator.robot.nv)
-        # shoulder flexion
-        gainVector[IDXRSHFL]=0; gainVector[IDXLSHFL]=0;
-        # elbow flexion
-        gainVector[IDXRELFL]=0; gainVector[IDXLELFL]=0;
-        # hip rotations
-        gainVector[IDXRHIFL+1]=0; gainVector[IDXLHIFL+1]=0;
-        gainVector[IDXRHIFL+2]=0; gainVector[IDXLHIFL+2]=0;
-        # ankle inversion - eversion
-        # back
-        gainVector[IDXBACFL]=0.3;#0.3
-        # neck
-        gainVector[IDXNECFL]=0;
-        # lower joints less controlled to less stop com 
-        gainVector[IDXRHIFL] = 3; gainVector[IDXLHIFL] = 3;#3
-        gainVector[IDXRKNFL] = 0.1; gainVector[IDXLKNFL] = 0.1; #0.1
-        #gainVector[IDXRANFL] = 1; gainVector[IDXLANFL] = 1;#3
-        self.taskLinMom.setGain(gainVector)
+        self.taskLinMom.kp = w.kp_lin_mom #9 
+        self.taskLinMom.kv = w.kv_lin_mom
+        self.taskLinMom.setGain(w.gain_vector_lin_mom)
 
         # Angular Momentum
         self.taskAngMom = Task.MomentumTask(solver.robot, self.trajMom, 'Angular Momentum around ML')
         self.taskAngMom.mask(np.array([0,0,0,1,1,1]))
-        self.taskAngMom.kp = 20#18
-        self.taskAngMom.kv = 0
-        gainVector = np.zeros(simulator.robot.nv)
-        # shoulder flexion
-        gainVector[IDXRSHFL]=1; gainVector[IDXLSHFL]=1;
-        # elbow flexion
-        gainVector[IDXRELFL]=1; gainVector[IDXLELFL]=1;
-        self.taskAngMom.setGain(gainVector)
+        self.taskAngMom.kp = w.kp_ang_mom #20#18
+        self.taskAngMom.kv = w.kv_ang_mom
+        self.taskAngMom.setGain(w.gain_vector_ang_mom)
         
         
             
-class Plot():
+class Plot:
     def __init__(self):
         self.q = []
         self.hg = []
@@ -387,6 +367,7 @@ class Plot():
 
 ''' **********************  MAIN SCRIPT ********************************** '''
 q=[]
+vi = []
 plot = Plot()
 prepare = PrepareToJump()
 print 'Preparation Phase'
@@ -402,14 +383,16 @@ for i in range(0,prepare.DURATION):#150
     q+=[simulator.robot.q]
     se3.ccrba(simulator.robot.model, simulator.robot.data, simulator.robot.q, simulator.robot.v)
     plot.hg+=[simulator.robot.data.hg.np.squeeze().A1]
-
+    vi+=[se3.SE3.Identity()]
 print 'Jump Phase'
 solver.emptyStack()
 jump = Jump()
+#solver.addTask(jump.taskGaze, 1)
 solver.addTask(jump.taskAngMom, 1)
 solver.addTask(jump.taskLinMom, 1)
 solver.addTask([prepare.taskRF, prepare.taskLF], 1)
 t = 0.0
+
 for i in range(0,jump.DURATION):#100 80 180
     a = solver.inverseKinematics2nd(t)
     simulator.increment2(simulator.robot.q, a, dt, t, False)
@@ -417,8 +400,8 @@ for i in range(0,jump.DURATION):#100 80 180
     t += dt
     q+=[simulator.robot.q]
     plot.hg+=[simulator.robot.data.hg.np.squeeze().A1]
-    plot.p_error_hl+=[solver.tasks[0].p_error]
-    plot.p_error_ho+=[solver.tasks[1].p_error]
+    #plot.p_error_hl+=[solver.tasks[0].p_error]
+    #plot.p_error_ho+=[solver.tasks[1].p_error]
     #if simulator.robot.framePosition(IDXRF,simulator.robot.q).translation[2] <= 0.2 :
     #    break
 
@@ -431,6 +414,7 @@ for i in range(0,170):#150
     se3.ccrba(simulator.robot.model, simulator.robot.data, simulator.robot.q, simulator.robot.v)
     plot.hg+=[simulator.robot.data.hg.np.squeeze().A1]
 '''
+
 
 #Last Push in Antero Posterior direction
 print 'Fly Phase'
@@ -449,7 +433,7 @@ while True:
     #a[0:6]+=simulator.robot.model.gravity.vector.copy()
     simulator.increment2(simulator.robot.q, a, dt, t, False)
     # check contact with the ground
-    if simulator.robot.framePosition(IDXRF,simulator.robot.q).translation[2] <= 0.2 : #0.2
+    if simulator.robot.framePosition(idx.FRF,simulator.robot.q).translation[2] <= 0.2 : #0.2
         break
     #trial.playTrial(rep=r,dt=dt,stp=1,start=i+386,end=i+387)
     t += dt
@@ -461,9 +445,9 @@ fly.DURATION=i
 print 'Land Phase'
 solver.emptyStack()
 land = Land()
-solver.addTask(land.taskHD, 1)
+#solver.addTask(land.taskHD, 1)
 #solver.addTask([land.taskRA, land.taskLA], 1)
-solver.addTask(land.taskAngMom, 1)
+#solver.addTask(land.taskAngMom, 1)
 solver.addTask(land.taskLinMom, 1)
 solver.addTask([land.taskRF, land.taskLF], 1)
 t = 0.0
@@ -478,79 +462,27 @@ for i in range(0,land.DURATION):
     #print simulator.robot.data.acom[0]
     #print simulator.robot.data.kinetic_energy
 
+
+
+
+
+
 plot.Momentum()
+simulator.viewer.viewer.gui.addXYZaxis(robotNode+'neckJoint', [0., 1., 0., .5], 0.03, 0.3)
+oMop = se3.SE3.Identity()
 def playMotions(first=0, last=1):
     for i in range(first, last):
         #trial.playTrial(rep=r,dt=dt,stp=1,start=i,end=i+1)
         trial.play(trial.trial[r]['pinocchio_data'][i])
         simulator.viewer.display(q[i], simulator.robot.name)
-        plot.update_line(i)
+        oMi = simulator.robot.framePosition(26,q[i])
+        oMop.translation = oMi.translation+oMi.rotation*jump.op
+        oMop.rotation = oMi.rotation.copy()
+        vis = oMop.copy()
+        #vis.rotation = se3.utils.rpyToMatrix(np.matrix(jump.taskGaze.vision).T)
+        #vis.rotation = se3.utils.rpyToMatrix(jump.taskGaze.vision)
+        #simulator.viewer.placeObject(robotNode+'iMo', vis, True)
+        #simulator.viewer.placeObject(robotNode+'neckJoint', oMi, True)robotNode+'oMi'
+        #simulator.viewer.placeObject(robotNode+'oMi', vi[i], True)
+        #plot.update_line(i)
 
-#print simulator.robot.data.acom[0]
-#print simulator.robot.data.kinetic_energy
-    
-#simulator.viewer.updateRobotConfig(robot.q0.copy(),participantName)
-
-#import utils
-#from scipy.integrate import odeint
-
-#state0 = [np.array(simulator.robot.data.com[0][2])[0][0] , 
-#          np.array(simulator.robot.data.vcom[0][2])[0][0] ]
-#t = np.arange(0.0, .3, dt)
-
-#state = odeint(utils.MassSpring, state0)#, t, simulator.robot.data.mass[0], 10.)
-#utils.plot(t,state)
-
-
-
-
-
-#TODO : add gain for angular momentum task
-
-
-'''
-# plot velocity of center of mass 
-com = []
-for i in xrange(100):
-    com += [np.array(se3.centerOfMass(robot.model, 
-                                      robot.data, 
-                                      trial.land[1]['pinocchio_data'][i].T, True).T).squeeze()]
-com = np.matrix(com)
-
-plt.ion()
-fig = plt.figure('CoM')
-ax = fig.add_subplot ('111')
-ax.plot(trial.land[1]['time'].T, com[:,0],'r', linewidth=3.0)
-ax.plot(trial.land[1]['time'].T, com[:,1],'g', linewidth=3.0)
-ax.plot(trial.land[1]['time'].T, com[:,2],'b', linewidth=3.0)
-
-
-#acceleration before impact
-#acom = 
-#Fcontact = simulator.robot.data.mass[0]*simulator.robot.data.acom
-#comTrj = - Fcontact/ks #+ Fcontact/kd
-b = 100
-k = 10
-comTrj = []
-for i in xrange():
-    comTrj += [simulator.robot.data.mass[0]*simulator.robot.data.acom[0] +  
-              b*simulator.robot.data.vcom[0] + 
-              k*simulator.robot.data.com[0]]
-'''
-'''
-for i in range(0,self.DURATION):    
-            vcom += acom*dt
-            pcom += vcom*dt
-            CoM += [np.array(pcom).squeeze()]
-        print vcom
-        return CoM
-
-hcomMax = np.asmatrix(np.load(p+'/push_comprofile.npy')).T[2,-1]
-Ein = simulator.robot.data.kinetic_energy + simulator.robot.data.mass[0]*hcomMax*9.81
-
-#ax.plot(fly.desCoM[0].A1,'r', linewidth=3.0)
-#ax.plot(fly.desCoM[1].A1,'g', linewidth=3.0)
-#ax.plot(fly.desCoM[2].A1,'b', linewidth=3.0)
-
-#plt.close()
-'''
